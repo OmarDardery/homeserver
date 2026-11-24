@@ -1,0 +1,31 @@
+services:
+  aiostreams:
+    image: ghcr.io/viren070/aiostreams:latest
+    container_name: aiostreams
+    restart: unless-stopped
+    env_file:
+      - /var/lib/homeserver/aiostreams/aiostreams.env
+    volumes:
+      - aiostreams-data:/app/data
+    ports:
+      - "127.0.0.1:8080:3000"
+    networks:
+      - media
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:latest
+    container_name: aiostreams-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - /var/lib/homeserver/aiostreams/cloudflared.env
+    depends_on:
+      - aiostreams
+    networks:
+      - media
+
+networks:
+  media:
+
+volumes:
+  aiostreams-data:

@@ -42,7 +42,9 @@ if [[ -n "$printer_source" ]]; then
 fi
 install -d -m 0755 "$managed"
 touch "$managed/.homeserver-managed"
-install -m 0644 "$HOMESERVER_SOURCE/module.nix" "$managed/module.nix"
+for file in module.nix network-services.nix compose.yaml aiostreams.env.example cloudflared.env.example; do
+  install -m 0644 "$HOMESERVER_SOURCE/$file" "$managed/$file"
+done
 install -m 0644 "$HOMESERVER_SOURCE/printer-placeholder.cfg" "$managed/printer-placeholder.cfg"
 if [[ ! -e "$root/flake.nix" ]]; then
   cat > "$root/flake.nix" <<FLAKE
@@ -74,3 +76,5 @@ fi
 nixos-rebuild switch --flake "path:$root#homeserver"
 echo 'Cockpit: https://SERVER-IP:9090 | Mainsail: http://SERVER-IP'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
+echo 'AdGuard Home: http://SERVER-IP:3000 | DNS: port 53'
+echo 'AIOStreams: follow README to create private environment files and start aiostreams-stack.'
