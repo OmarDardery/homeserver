@@ -1,4 +1,5 @@
 """Root-only local secret manager. Values enter via stdin, never argv."""
+import base64
 import fcntl
 import json
 import os
@@ -8,10 +9,14 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 STATE = Path("/var/lib/homeserver/secrets")
 KEY = STATE / "age.key"
 STORE = STATE / "runtime.enc"
+GITHUB_TOKEN = STATE / "github.token"
+GITHUB_API = "https://api.github.com/repos/OmarDardery/homeserver/contents/secrets/runtime.enc"
 RUNTIME = Path("/run/homeserver-secrets")
 DECRYPTED = Path("/run/secrets/homeserver-runtime")
 OLD_ENV = Path("/var/lib/homeserver/aiostreams/aiostreams.env")
@@ -78,19 +83,25 @@ def decrypt():
                                     "--output-type", "binary", str(STORE)], env=env)))
 
 
-def save(data):
+def encrypt(data):
     validate(data)
     recipient = run(["age-keygen", "-y", str(KEY)]).decode().strip()
     encrypted = run(["sops", "--encrypt", "--age", recipient, "--input-type", "binary",
                      "--output-type", "binary", "/dev/stdin"],
                     json.dumps(data).encode())
-    atomic(STORE, encrypted)
+    return encrypted
+
+
+def save(data):
+    atomic(STORE, encrypt(data))
 
 
 def initialize():
     if STORE.exists():
         decrypt()
         return
+    if GITHUB_TOKEN.exists():
+        raise Invalid("Encrypted cache missing. Restore it from GitHub before booting services.")
     if not KEY.exists():
         atomic(KEY, run(["age-keygen"]))
     data = {"BASE_URL": "https://aio.dardery.work", "SECRET_KEY": secrets.token_hex(32),
@@ -109,6 +120,139 @@ def initialize():
     save(data)
     if decrypt() != data:
         raise Invalid("Encrypted migration could not be verified.")
+
+
+# Only ciphertext crosses this boundary. Never send the age identity or API token
+# as content. Reject redirects and ambient proxies to avoid forwarding credentials.
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def github_api(token, method="GET", payload=None):
+    url = GITHUB_API + ("?ref=main" if method == "GET" else "")
+    body = None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(url, data=body, method=method, headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "homeserver-secrets",
+    })
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    try:
+        with opener.open(request, timeout=20) as response:
+            return json.loads(response.read(2_000_000))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404 and method == "GET":
+            return None
+        if exc.code in (409, 422):
+            raise Invalid("GitHub rejected the update. Refresh or pull before retrying.") from None
+        raise Invalid("GitHub request failed. Check repository token permissions.") from None
+    except (OSError, ValueError):
+        raise Invalid("GitHub is unavailable. No local change was applied; refresh to verify remote state.") from None
+
+
+def token_value():
+    return GITHUB_TOKEN.read_text().strip() if GITHUB_TOKEN.exists() else None
+
+
+def encrypted_document(blob):
+    try:
+        obj = json.loads(blob)
+        if set(obj) != {"data", "sops"} or not obj["data"].startswith("ENC[AES256_GCM,"):
+            raise ValueError()
+        if not obj["sops"]["age"] or not obj["sops"]["mac"].startswith("ENC["):
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError, KeyError):
+        raise Invalid("Not a supported SOPS-encrypted binary document.") from None
+    return blob
+
+
+def decrypt_blob(blob):
+    encrypted_document(blob)
+    env = dict(os.environ, SOPS_AGE_KEY_FILE=str(KEY))
+    return validate(json.loads(run(["sops", "--decrypt", "--input-type", "binary",
+                                    "--output-type", "binary", "/dev/stdin"], blob, env=env)))
+
+
+def remote_read(token):
+    response = github_api(token)
+    if response is None:
+        return None
+    try:
+        if response["type"] != "file" or response["encoding"] != "base64":
+            raise ValueError()
+        sha = response["sha"]
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError()
+        blob = base64.b64decode(response["content"].replace("\n", ""), validate=True)
+    except (ValueError, TypeError, KeyError):
+        raise Invalid("Unexpected GitHub file response.") from None
+    return sha, encrypted_document(blob)
+
+
+def remote_write(token, blob, previous=None):
+    # Validate ciphertext and its decryptability before uploading it.
+    decrypt_blob(blob)
+    payload = {"message": "Update encrypted homeserver secrets", "branch": "main",
+               "content": base64.b64encode(blob).decode("ascii")}
+    if previous is not None:
+        payload["sha"] = previous[0]
+    result = github_api(token, "PUT", payload)
+    if not result or not result.get("content", {}).get("sha"):
+        raise Invalid("GitHub commit could not be confirmed. Refresh before retrying.")
+
+
+def sync_status():
+    token = token_value()
+    if not token:
+        return "Local only — connect GitHub to enable encrypted commits."
+    try:
+        remote = remote_read(token)
+        if remote is None:
+            return "Remote file missing or inaccessible — reconnect to publish explicitly."
+        return ("Synced with GitHub." if remote[1] == STORE.read_bytes()
+                else "Remote differs — pull explicitly before editing.")
+    except Invalid:
+        return "GitHub unavailable — existing local secrets remain active."
+
+
+def github_connect(token):
+    if not isinstance(token, str) or not re.fullmatch(r"github_pat_[A-Za-z0-9_]{20,255}", token):
+        raise Invalid("Provide a fine-grained GitHub personal access token.")
+    remote = remote_read(token)
+    if remote is None:
+        remote_write(token, STORE.read_bytes())
+    # A different remote is never overwritten; explicit pull requires the age key.
+    atomic(GITHUB_TOKEN, (token + "\n").encode())
+
+
+def commit_update(data):
+    token = token_value()
+    if token is None:
+        save(data)
+        return
+    remote = remote_read(token)
+    if remote is None or remote[1] != STORE.read_bytes():
+        raise Invalid("Remote secrets differ or are missing. Pull or reconnect before editing.")
+    blob = encrypt(data)
+    remote_write(token, blob, remote)
+    # GitHub is authoritative. A crash here is recoverable using Pull from GitHub.
+    atomic(STORE, blob)
+
+
+def pull_remote(old):
+    token = token_value()
+    if token is None:
+        raise Invalid("Connect GitHub first.")
+    remote = remote_read(token)
+    if remote is None:
+        raise Invalid("No accessible encrypted secrets file in GitHub.")
+    data = decrypt_blob(remote[1])
+    if remote[1] != STORE.read_bytes():
+        atomic(STORE, remote[1])
+        apply_changes(old, data)
 
 
 def materialize(data):
@@ -134,7 +278,11 @@ def refresh():
 def update(old, data):
     if old == data:
         raise Invalid("Value unchanged. Use Retry apply if the prior restart failed.")
-    save(data)
+    commit_update(data)
+    apply_changes(old, data)
+
+
+def apply_changes(old, data):
     aio_changed = {k:v for k,v in old.items() if k != TOKEN} != {
         k:v for k,v in data.items() if k != TOKEN}
     token_changed = old.get(TOKEN) != data.get(TOKEN)
@@ -171,13 +319,19 @@ def main():
                 path.unlink(missing_ok=True)
             return
         data = decrypt()
-        if action == "list":
+        if action == "github-status":
+            print(json.dumps(sync_status()))
+        elif action == "github-connect":
+            github_connect(json.loads(sys.stdin.read(65536)).get("token"))
+        elif action == "github-pull":
+            pull_remote(data)
+        elif action == "list":
             print(json.dumps(sorted(set(data) | {TOKEN})))
         elif action in ("set", "delete", "reveal"):
             request = json.loads(sys.stdin.read(65536))
             name = request.get("name")
-            if not isinstance(name, str) or not NAME.fullmatch(name):
-                raise Invalid("Invalid variable name.")
+            if not isinstance(name, str) or not NAME.fullmatch(name) or name in {"GITHUB_TOKEN", "HOMESERVER_GITHUB_TOKEN"}:
+                raise Invalid("Invalid or reserved variable name.")
             if action == "reveal":
                 print(json.dumps(data.get(name)))
                 return

@@ -23,7 +23,7 @@
         let pkgs = nixpkgs.legacyPackages.${system}; in {
           default = pkgs.writeShellApplication {
             name = "homeserver-install";
-            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused ];
+            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.sops pkgs.age ];
             text = ''
               export HOMESERVER_SOURCE=${self.outPath}
               export HOMESERVER_NIXPKGS_REV=${nixpkgs.rev}

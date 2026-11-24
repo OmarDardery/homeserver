@@ -15,6 +15,17 @@ jobs:
       - run: python3 -m json.tool cloudflare/ingress.json > /dev/null
       - run: python3 -m json.tool secrets/cockpit/manifest.json > /dev/null && python3 -m py_compile secrets/backend.py && node --check secrets/cockpit/index.js
       - run: nix shell nixpkgs#sops nixpkgs#age nixpkgs#python3 -c python3 secrets/test_backend.py
+      - name: Verify committed secret file is ciphertext (if present)
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'secrets')
+          import backend
+          p = Path('secrets/runtime.enc')
+          if p.exists():
+              backend.encrypted_document(p.read_bytes())
+          PY
       - run: nix flake check --no-build
       - run: nix eval --raw .#nixosConfigurations.test.config.system.build.toplevel.drvPath
       - run: nix build .#packages.x86_64-linux.default
