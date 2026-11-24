@@ -26,9 +26,12 @@ jobs:
           if p.exists():
               backend.encrypted_document(p.read_bytes())
           PY
-      - run: nix flake check --no-build
-      - run: nix eval --raw .#nixosConfigurations.test.config.system.build.toplevel.drvPath
-      - run: nix build .#packages.x86_64-linux.default
+      - name: Require a committed and current lock file
+        run: |
+          git ls-files --error-unmatch flake.lock
+          nix flake check --no-build --no-update-lock-file
+      - run: nix eval --no-update-lock-file --raw .#nixosConfigurations.test.config.system.build.toplevel.drvPath
+      - run: nix build --no-update-lock-file .#packages.x86_64-linux.default
       - name: Validate Compose structure with dummy credentials
         run: |
           sudo mkdir -p /run/homeserver-secrets
