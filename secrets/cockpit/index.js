@@ -13,6 +13,7 @@ function button(text, fn) {
     b.type = "button"; b.textContent = text; b.onclick = fn; return b;
 }
 async function load() {
+    $("git-status").textContent = JSON.parse(await invoke("github-status"));
     const names = JSON.parse(await invoke("list"));
     $("rows").replaceChildren();
     for (const name of names) {
@@ -43,7 +44,7 @@ async function perform(fn) {
     if (busy) return;
     busy = true; $("status").textContent = "Working…";
     try { await fn(); $("status").textContent = "Ready."; }
-    catch (_) { $("status").textContent = "Operation failed or apply incomplete. Check administrative access and Services; retry Apply if needed."; }
+    catch (_) { $("status").textContent = "Operation failed or apply incomplete. Refresh GitHub status; check token permissions, administrative access and Services. If saved remotely, pull before retrying."; }
     finally { busy = false; }
 }
 $("editor").onsubmit = event => {
@@ -54,7 +55,17 @@ $("editor").onsubmit = event => {
     $("value").value = "";
     perform(async () => { await invoke("set", {name, value}); await load(); });
 };
-$("refresh").onclick = () => perform(load);
+$("refresh").onclick = () => $("github").onsubmit = event => {
+    event.preventDefault();
+    const token = $("github-token").value;
+    $("github-token").value = "";
+    perform(async () => { await invoke("github-connect", {token}); await load(); });
+};
+$("pull").onclick = () => {
+    if (confirm("Replace local secrets with the encrypted GitHub version and apply? Use local access if changing the tunnel."))
+        perform(async () => { await invoke("github-pull"); await load(); });
+};
+perform(load);
 $("apply").onclick = () => {
     if (confirm("Restart AIOStreams and the Cloudflare connector (if configured)?"))
         perform(async () => { await invoke("apply"); await load(); });

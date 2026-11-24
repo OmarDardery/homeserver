@@ -72,3 +72,26 @@ The native Cockpit Secrets plugin uses Cockpit's privileged bridge and a root-on
 Set, reveal, edit or delete variables in Cockpit. New variables are scoped to AIOStreams except the Cloudflare token. Required AIOStreams variables cannot be removed, and authentication cannot be disabled. Values are restricted to literal dotenv-safe characters; complex values need a future escaping implementation. Changing SECRET_KEY can invalidate encrypted addon settings. Use a local Cockpit session when changing the tunnel token. Reveal values expire after 15 seconds. Saving applies only the affected service; Retry apply restarts both. If apply fails, the desired encrypted value is retained and can be retried. AIOStreams recreates its container without deleting the persistent volume.
 
 During initial upgrade, existing plain env/token files are imported and removed after encrypted decryption and runtime materialization. Back up before upgrading; a legacy file with unsupported formatting fails closed. If reverting to a pre-secrets generation, restore protected legacy files from backup before starting services. No remote secrets provider is required. No automatic cloud key provisioning occurs.
+
+## GitOps secrets synchronization
+
+The repository's `main:secrets/runtime.enc` is the canonical **encrypted** environment document after connecting GitHub. The local copy is a boot cache read by sops-nix, so rebooting does not need internet access. No secrets are sent by the CI workflow. Only the encrypted document is committed; the machine age identity and GitHub write token stay in root-only files under `/var/lib/homeserver/secrets`, outside the Nix store and Git. Container administrators can still inspect the runtime environment.
+
+1. Install normally (no Cloudflare or GitHub write token needed). Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) scoped only to this repository with **Contents: Read and write**. This is separate from the read credential used by Nix to fetch the private repository.
+2. In Cockpit → Tools → Secrets, paste it in **Connect / rotate token**. If the encrypted document is absent, the current encrypted local values are published. If it already exists and differs, it is not overwritten.
+3. Save an environment variable. The server encrypts the complete document and commits only that file using GitHub's optimistic blob-SHA check, then installs the local ciphertext and applies the changes. Network or conflict failures stop the edit before local application. A lost response after a remote commit can be reconciled via Pull. If applying fails after a commit, Retry apply is available.
+4. **Pull encrypted secrets from GitHub** explicitly validates and decrypts the remote document before replacing the cache and restarting affected services. No automatic overwriting of local state or forced Git pushes. Until GitHub is connected, changes are local only. If main is branch-protected against direct file updates, writes will fail rather than bypass the protection.
+
+### Reinstall / recover
+
+Back up `/var/lib/homeserver/secrets/age.key` separately in a secure password manager or offline encrypted backup. Never commit it. GitHub cannot recover this key for you. Use a private location outside `/etc/nixos` and any Git checkout.
+
+On a new host, after authenticating Nix to the private repo, run:
+
+```sh
+sudo nix --extra-experimental-features 'nix-command flakes' run --refresh github:OmarDardery/homeserver -- --age-key-file /root/recovery/age.key
+```
+
+The installer restores the repository ciphertext if present and verifies that the provided identity can decrypt it. It never overwrites an existing local secret document or identity. Without the correct age key a fresh restore stops rather than generating replacement credentials. Reconnect GitHub write access from Cockpit after recovery. This restores environment variables, not printer files, AdGuard settings or Podman volume data; back those up separately. The mutable secret cache is not automatically rolled back with NixOS generations.
+
+GitHub changes to the NixOS modules are still deployed with the same installer. Host-specific hardware, existing users and boot configuration remain local. There is intentionally no automatic unattended OS activation.

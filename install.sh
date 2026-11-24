@@ -8,10 +8,12 @@ if (( EUID != 0 )); then
   exit 1
 fi
 printer_source=""
+age_key_source=""
 while (( $# )); do
   case "$1" in
     --printer-config) printer_source="${2:?Provide a directory or printer.cfg}"; shift 2 ;;
-    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE]'; exit 0 ;;
+    --age-key-file) age_key_source="${2:?Provide the backed-up age identity file}"; shift 2 ;;
+    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE] [--age-key-file FILE]'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -39,6 +41,28 @@ if [[ -n "$printer_source" ]]; then
   if [[ -e /srv/printer_data/config/printer.cfg ]] && ! cmp -s /srv/printer_data/config/printer.cfg "$HOMESERVER_SOURCE/printer-placeholder.cfg"; then
     echo 'Existing printer.cfg detected; will not overwrite it.' >&2; exit 1
   fi
+fi
+# Recover a published SOPS document without exposing the key to Nix.
+secret_state=/var/lib/homeserver/secrets
+remote_cipher="$HOMESERVER_SOURCE/secrets/runtime.enc"
+if [[ -n "$age_key_source" ]]; then
+  [[ -f "$age_key_source" && -s "$age_key_source" ]] || { echo 'Age identity file missing or empty.' >&2; exit 1; }
+  age-keygen -y "$age_key_source" >/dev/null
+  if [[ -e "$secret_state/age.key" ]] && ! cmp -s "$age_key_source" "$secret_state/age.key"; then
+    echo 'Refusing to replace the existing age identity.' >&2; exit 1
+  fi
+fi
+if [[ -f "$remote_cipher" && ! -e "$secret_state/runtime.enc" ]]; then
+  candidate="$secret_state/age.key"
+  if [[ -n "$age_key_source" ]]; then candidate="$age_key_source"; fi
+  if [[ ! -s "$candidate" ]]; then
+    echo 'GitHub contains encrypted secrets. Restore the age identity with --age-key-file before installing.' >&2; exit 1
+  fi
+  if ! SOPS_AGE_KEY_FILE="$candidate" sops --decrypt --input-type binary --output-type binary "$remote_cipher" >/dev/null 2>&1; then
+    echo 'The supplied age identity cannot decrypt the GitHub secrets.' >&2; exit 1
+  fi
+elif [[ -e "$secret_state/runtime.enc" && ! -s "$secret_state/age.key" && -z "$age_key_source" ]]; then
+  echo 'Existing encrypted secrets require the original age identity.' >&2; exit 1
 fi
 install -d -m 0755 "$managed"
 touch "$managed/.homeserver-managed"
@@ -96,9 +120,21 @@ if [[ -n "$printer_source" ]]; then
     install -m 0640 "$printer_source" /srv/printer_data/config/printer.cfg
   fi
 fi
+if [[ -n "$age_key_source" || -f "$remote_cipher" ]]; then
+  install -d -m 0700 "$secret_state"
+  if [[ -n "$age_key_source" && ! -e "$secret_state/age.key" ]]; then
+    install -m 0600 -o root -g root "$age_key_source" "$secret_state/age.key"
+  fi
+  if [[ -f "$remote_cipher" && ! -e "$secret_state/runtime.enc" ]]; then
+    install -m 0600 -o root -g root "$remote_cipher" "$secret_state/runtime.enc"
+  elif [[ -f "$remote_cipher" ]] && ! cmp -s "$remote_cipher" "$secret_state/runtime.enc"; then
+    echo 'GitHub secrets differ from the local cache; use Cockpit Pull to reconcile. Local secrets preserved.' >&2
+  fi
+fi
 nixos-rebuild switch --flake "path:$root#homeserver"
 echo 'Cockpit: https://SERVER-IP:9090 | Mainsail: http://SERVER-IP'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
 echo 'AdGuard Home: http://SERVER-IP:3000 | DNS: port 53'
 echo 'AIOStreams: initialized automatically; credentials in Cockpit → Secrets'
+echo 'GitHub secrets: optional; connect GitHub in Cockpit → Secrets.'
 echo 'Cloudflare: optional; add CLOUDFLARE_TUNNEL_TOKEN in Cockpit → Secrets.'
