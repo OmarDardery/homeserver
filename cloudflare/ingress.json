@@ -1,0 +1,40 @@
+{
+  "config": {
+    "ingress": [
+      {
+        "hostname": "3dprinter.dardery.work",
+        "service": "http://127.0.0.1:80",
+        "originRequest": {
+          "access": {
+            "required": true,
+            "teamName": "dardery",
+            "audTag": [
+              "48f28eeb4090eb30a864d646c5063b55ed325858bc38442d609f687e7fa4a249"
+            ]
+          }
+        }
+      },
+      {
+        "hostname": "aio.dardery.work",
+        "service": "http://127.0.0.1:8080"
+      },
+      {
+        "hostname": "cockpit.dardery.work",
+        "service": "https://127.0.0.1:9090",
+        "originRequest": {
+          "noTLSVerify": true,
+          "access": {
+            "required": true,
+            "teamName": "dardery",
+            "audTag": [
+              "fd3724bfa9d591afc7c3b2ee0355e17fbb0edcb0ec4e4cc23702f2dc4202e6b8"
+            ]
+          }
+        }
+      },
+      {
+        "service": "http_status:404"
+      }
+    ]
+  }
+}

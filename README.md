@@ -10,7 +10,7 @@ On an existing conventional NixOS installation, authenticate Nix to GitHub first
 sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDardery/homeserver
 ```
 
-Keep your GitHub access token in root's protected Nix configuration (`access-tokens = github.com=...`), never in this repository or a shell command. For custom host flakes, import `homeserver.nixosModules.default` instead of running the installer. The installer does not partition disks or replace your existing hardware configuration.
+Keep your GitHub access token in root's protected Nix configuration (`access-tokens = github.com=...`), never in this repository or a shell command. For custom host flakes, import `homeserver.nixosModules.default` instead of running the installer. The installer does not partition disks or replace your existing hardware configuration. No Cloudflare token is needed or requested during installation. All local services are installed first; the tunnel stays inactive unless previously connected.
 
 Cockpit: `https://SERVER-IP:9090` (existing system account). Mainsail: `http://SERVER-IP`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
 
@@ -22,16 +22,9 @@ Visit `http://SERVER-IP:3000` and complete the initial setup wizard. Keep the ad
 
 The [Compose file](compose.yaml) manages only AIOStreams. Persistent data uses the existing named volume and the host port 8080 is loopback-only.
 
-First-time setup after installation (do not overwrite an existing secret):
+On first start the systemd service generates the encryption key and a random admin password automatically, writes them to the root-only file `/var/lib/homeserver/aiostreams/aiostreams.env`, and starts the container. Existing env files are preserved. To retrieve the login locally, use `sudo grep '^AIOSTREAMS_AUTH=' /var/lib/homeserver/aiostreams/aiostreams.env` in a private terminal. Do not share the output. For an older installation, add missing authentication settings manually (see the example env file), retaining the existing encryption key, and restart the stack.
 
-```sh
-sudo install -m 600 -o root -g root /etc/homeserver/aiostreams/aiostreams.env.example /var/lib/homeserver/aiostreams/aiostreams.env
-openssl rand -hex 32
-sudoedit /var/lib/homeserver/aiostreams/aiostreams.env
-sudo systemctl start aiostreams-stack
-```
-
-Replace SECRET_KEY with the generated key, and retain that key across updates. Set BASE_URL=https://aio.dardery.work (also update any existing env file with an older hostname). Enable appropriate AIOStreams application authentication before sharing the URL; Stremio clients may not support a Cloudflare Access login.
+Local preview without Cloudflare: if SSH is enabled on the host, forward port 8080 using `ssh -L 8080:127.0.0.1:8080 USER@SERVER-IP`, then open `http://localhost:8080`. The canonical addon URL is `https://aio.dardery.work`; remote clients require the tunnel to be connected.
 
 In Cockpit, use **Podman containers** for container logs and **Services → aiostreams-stack** for whole-stack start/stop. To update the image:
 
@@ -54,17 +47,15 @@ The existing remotely managed `homelab` tunnel is the sole connector. Cloudflare
 
 Unmatched routes return 404. AdGuard remains LAN-only. Cockpit uses its local self-signed certificate; verification is disabled only for that loopback origin, and browser traffic remains HTTPS. The printer and Cockpit routes require valid Access JWTs at the connector.
 
-Retrieve the **homelab** connector token (not the deleted aiostreams tunnel token) from the Cloudflare Zero Trust dashboard. Save it as a single-line root-only file, without a TUNNEL_TOKEN= prefix:
+No tunnel token is required for the installation. When ready, copy the **homelab** connector token from the Cloudflare Zero Trust dashboard and run in Cockpit's terminal or SSH:
 
 ```sh
-sudo install -d -m 700 /var/lib/homeserver/cloudflared
-sudo install -m 600 /dev/null /var/lib/homeserver/cloudflared/token
-sudoedit /var/lib/homeserver/cloudflared/token
-sudo systemctl start cloudflared
-sudo systemctl status cloudflared
+sudo homeserver-connect
 ```
 
-Run the file creation command only for a new installation; it truncates an existing token file. Alternatively pass `-- --tunnel-token-file /root/homelab-token` to the installer. The token is loaded using systemd credentials, outside Git and the Nix store. The service starts automatically at boot when its token file exists. If rotating the token, replace the file and restart the service.
+Paste only the token at the hidden prompt. It is stored as a root-only file and loaded using systemd credentials, outside Git and the Nix store. The connector starts immediately and automatically on future boots. Run the same command to rotate the token. Verify the tunnel status in Cloudflare and test the three public URLs. No separate tunnel or proxy is needed per service.
+
+Routing is deliberately remotely managed: the dashboard or API changes exact hostnames without a NixOS rebuild. [cloudflare/ingress.json](cloudflare/ingress.json) records the intended routes; it is a reference snapshot, not an automatically applied local configuration. Do not use a wildcard forwarding rule: the explicit routes preserve independent Access enforcement. A local reverse proxy would add another routing layer without benefit for these three services.
 
 Migration: the old AIOStreams Cloudflared container is removed when the stack starts. The old tunnel token is invalid; after confirming the new connector works, delete the obsolete `/var/lib/homeserver/aiostreams/cloudflared.env` file. Do not delete the AIOStreams data volume.
 

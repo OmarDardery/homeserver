@@ -1,6 +1,29 @@
 { pkgs, ... }:
 let
   state = "/var/lib/homeserver/aiostreams";
+  initAio = pkgs.writeShellScript "init-aiostreams" ''
+    set -eu
+    umask 077
+    envFile="${state}/aiostreams.env"
+    if [ ! -e "$envFile" ]; then
+      tmp=$(${pkgs.coreutils}/bin/mktemp "${state}/.env.XXXXXX")
+      trap 'rm -f "$tmp"' EXIT
+      {
+        printf 'BASE_URL=https://aio.dardery.work\n'
+        printf 'SECRET_KEY=%s\n' "$(${pkgs.openssl}/bin/openssl rand -hex 32)"
+        printf 'AIOSTREAMS_AUTH=admin:%s\n' "$(${pkgs.openssl}/bin/openssl rand -hex 24)"
+        printf 'AIOSTREAMS_AUTH_REQUIRED=true\n'
+      } > "$tmp"
+      # Publish only a complete file, never overwrite a pre-existing key.
+      ln "$tmp" "$envFile"
+    fi
+    chmod 600 "$envFile"
+  '';
+  connect = pkgs.writeShellApplication {
+    name = "homeserver-connect";
+    runtimeInputs = [ pkgs.coreutils pkgs.gnugrep pkgs.systemd ];
+    text = builtins.readFile ./connect.sh;
+  };
   compose = "${pkgs.podman-compose}/bin/podman-compose --project-name aiostreams --file /etc/homeserver/aiostreams/compose.yaml";
 in {
   services.adguardhome = {
@@ -13,7 +36,7 @@ in {
 
   virtualisation.podman.enable = true;
   services.cockpit.plugins = [ pkgs.cockpit-podman ];
-  environment.systemPackages = [ pkgs.podman-compose pkgs.openssl pkgs.cloudflared ];
+  environment.systemPackages = [ pkgs.podman-compose pkgs.openssl pkgs.cloudflared connect ];
   systemd.sockets.podman.wantedBy = [ "sockets.target" ];
 
   systemd.tmpfiles.rules = [
@@ -29,14 +52,16 @@ in {
     wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" ];
     after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
-    unitConfig.ConditionPathExists = "${state}/aiostreams.env";
-    restartTriggers = [ ./compose.yaml ];
+    restartTriggers = [ ./compose.yaml initAio ];
     path = [ pkgs.podman pkgs.podman-compose ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
       # Remove only the obsolete connector container during migration.
-      ExecStartPre = "${pkgs.podman}/bin/podman rm -f --ignore aiostreams-cloudflared";
+      ExecStartPre = [
+        "${initAio}"
+        "${pkgs.podman}/bin/podman rm -f --ignore aiostreams-cloudflared"
+      ];
       ExecStart = "${compose} up -d";
       ExecStop = "${compose} down";
       TimeoutStartSec = "10min";
@@ -49,7 +74,7 @@ in {
     wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" ];
     after = [ "network-online.target" "systemd-tmpfiles-setup.service" ];
-    unitConfig.ConditionPathExists = "/var/lib/homeserver/cloudflared/token";
+    unitConfig.ConditionFileNotEmpty = "/var/lib/homeserver/cloudflared/token";
     serviceConfig = {
       DynamicUser = true;
       LoadCredential = "homelab-token:/var/lib/homeserver/cloudflared/token";
