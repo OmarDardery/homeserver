@@ -9,10 +9,9 @@ in {
     enable = true;
     port = 9090;
     openFirewall = true;
-    settings.WebService = {
-      LoginTo = false;
-      Origins = lib.mkForce "https://localhost:9090 https://cockpit.dardery.work wss://cockpit.dardery.work";
-    };
+    # NixOS merges these with its built-in localhost origin.
+    allowed-origins = [ "https://cockpit.dardery.work" ];
+    settings.WebService.LoginTo = false;
   };
   environment.systemPackages = with pkgs; [ blesh git nano curl htop tmux ];
   programs.bash.interactiveShellInit = ''
