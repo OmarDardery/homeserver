@@ -63,9 +63,13 @@ in {
     nginx = {
       default = true;
       extraConfig = "client_max_body_size 1024M;";
-      locations."~ ^/(printer|api|access|machine|server)/".recommendedProxySettings = true;
-      locations."/websocket".recommendedProxySettings = true;
     };
+  };
+  # Extend the generated vhost, not the Mainsail nginx submodule: its
+  # location defaults otherwise conflict with the built-in proxy targets.
+  services.nginx.virtualHosts.mainsail.locations = {
+    "~ ^/(printer|api|access|machine|server)/".recommendedProxySettings = true;
+    "/websocket".recommendedProxySettings = true;
   };
   networking.firewall.allowedTCPPorts = [ 80 ];
 }
