@@ -5,6 +5,16 @@ in {
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   time.timeZone = lib.mkDefault "Africa/Cairo";
   security.polkit.enable = true;
+  # Keep the headless server running with the laptop lid closed.
+  services.logind.settings.Login = {
+    HandleLidSwitch = "ignore";
+    HandleLidSwitchExternalPower = "ignore";
+    HandleLidSwitchDocked = "ignore";
+  };
+  # Stable serial alias for the SKR Mini E3 V3.0 running Klipper.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="614e", SYMLINK+="klipper-mcu", GROUP="dialout", MODE="0660"
+  '';
   services.cockpit = {
     enable = true;
     port = 9090;
