@@ -22,7 +22,7 @@ Visit `http://SERVER-IP:3000` and complete the initial setup wizard. Keep the ad
 
 The [Compose file](compose.yaml) manages only AIOStreams. Persistent data uses the existing named volume and the host port 8080 is loopback-only.
 
-On first start the systemd service generates the encryption key and a random admin password automatically, writes them to the root-only file `/var/lib/homeserver/aiostreams/aiostreams.env`, and starts the container. Existing env files are preserved. To retrieve the login locally, use `sudo grep '^AIOSTREAMS_AUTH=' /var/lib/homeserver/aiostreams/aiostreams.env` in a private terminal. Do not share the output. For an older installation, add missing authentication settings manually (see the example env file), retaining the existing encryption key, and restart the stack.
+On first start the encrypted secret manager generates the encryption key and a random admin password. Existing credentials are migrated and preserved. Open **Cockpit → Tools → Secrets** with administrative access to reveal or edit credentials.
 
 Local preview without Cloudflare: if SSH is enabled on the host, forward port 8080 using `ssh -L 8080:127.0.0.1:8080 USER@SERVER-IP`, then open `http://localhost:8080`. The canonical addon URL is `https://aio.dardery.work`; remote clients require the tunnel to be connected.
 
@@ -33,7 +33,7 @@ sudo podman-compose -p aiostreams -f /etc/homeserver/aiostreams/compose.yaml pul
 sudo systemctl restart aiostreams-stack
 ```
 
-The image uses the upstream latest tag, not an immutable digest. Back up the named volume and protected env file before updating. Stopping the stack does not delete its data.
+The image uses the upstream latest tag, not an immutable digest. Back up the named volume and encrypted secret store and its age key before updating. Stopping the stack does not delete its data.
 
 ## Cloudflare Tunnel (native systemd service)
 
@@ -47,17 +47,11 @@ The existing remotely managed `homelab` tunnel is the sole connector. Cloudflare
 
 Unmatched routes return 404. AdGuard remains LAN-only. Cockpit uses its local self-signed certificate; verification is disabled only for that loopback origin, and browser traffic remains HTTPS. The printer and Cockpit routes require valid Access JWTs at the connector.
 
-No tunnel token is required for the installation. When ready, copy the **homelab** connector token from the Cloudflare Zero Trust dashboard and run in Cockpit's terminal or SSH:
-
-```sh
-sudo homeserver-connect
-```
-
-Paste only the token at the hidden prompt. It is stored as a root-only file and loaded using systemd credentials, outside Git and the Nix store. The connector starts immediately and automatically on future boots. Run the same command to rotate the token. Verify the tunnel status in Cloudflare and test the three public URLs. No separate tunnel or proxy is needed per service.
+No tunnel token is required for installation. When ready, open **Cockpit → Tools → Secrets**, set `CLOUDFLARE_TUNNEL_TOKEN` to the Homelab connector token, and Save and apply. Alternatively run `sudo homeserver-connect` in a private terminal. Verify tunnel health in Cloudflare.
 
 Routing is deliberately remotely managed: the dashboard or API changes exact hostnames without a NixOS rebuild. [cloudflare/ingress.json](cloudflare/ingress.json) records the intended routes; it is a reference snapshot, not an automatically applied local configuration. Do not use a wildcard forwarding rule: the explicit routes preserve independent Access enforcement. A local reverse proxy would add another routing layer without benefit for these three services.
 
-Migration: the old AIOStreams Cloudflared container is removed when the stack starts. The old tunnel token is invalid; after confirming the new connector works, delete the obsolete `/var/lib/homeserver/aiostreams/cloudflared.env` file. Do not delete the AIOStreams data volume.
+Migration: the old AIOStreams Cloudflared container is removed when the stack starts. Delete any obsolete `/var/lib/homeserver/aiostreams/cloudflared.env` after verifying the new tunnel. Do not delete the AIOStreams data volume.
 
 ## Printer
 
@@ -70,3 +64,11 @@ Re-run the installation command to refresh the managed module; the host flake pi
 ## Checks
 
 CI evaluates a test NixOS host and checks the installer app. Hardware operation requires on-device verification.
+
+## Secrets (SOPS + age + sops-nix)
+
+The native Cockpit Secrets plugin uses Cockpit's privileged bridge and a root-only helper, not a separate server. Values are encrypted in `/var/lib/homeserver/secrets/runtime.enc`; the machine age identity is `/var/lib/homeserver/secrets/age.key`. sops-nix installs the encrypted document under `/run/secrets`; service-specific credentials are rendered under `/run/homeserver-secrets` (root only). Do not commit either the age identity or plaintext. Back up the encrypted document and identity securely and separately. Host root, privileged Cockpit users, and rootful Podman administrators can access plaintext; this is not protection from a compromised root account.
+
+Set, reveal, edit or delete variables in Cockpit. New variables are scoped to AIOStreams except the Cloudflare token. Required AIOStreams variables cannot be removed, and authentication cannot be disabled. Values are restricted to literal dotenv-safe characters; complex values need a future escaping implementation. Changing SECRET_KEY can invalidate encrypted addon settings. Use a local Cockpit session when changing the tunnel token. Reveal values expire after 15 seconds. Saving applies only the affected service; Retry apply restarts both. If apply fails, the desired encrypted value is retained and can be retried. AIOStreams recreates its container without deleting the persistent volume.
+
+During initial upgrade, existing plain env/token files are imported and removed after encrypted decryption and runtime materialization. Back up before upgrading; a legacy file with unsupported formatting fails closed. If reverting to a pre-secrets generation, restore protected legacy files from backup before starting services. No remote secrets provider is required. No automatic cloud key provisioning occurs.

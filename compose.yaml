@@ -4,7 +4,7 @@ services:
     container_name: aiostreams
     restart: unless-stopped
     env_file:
-      - /var/lib/homeserver/aiostreams/aiostreams.env
+      - /run/homeserver-secrets/aiostreams.env
     volumes:
       - aiostreams-data:/app/data
     ports:

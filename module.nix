@@ -1,7 +1,7 @@
 { pkgs, lib, ... }:
 let data = "/srv/printer_data";
 in {
-  imports = [ ./network-services.nix ];
+  imports = [ ./network-services.nix ./secrets ];
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   time.timeZone = lib.mkDefault "Africa/Cairo";
   security.polkit.enable = true;
