@@ -10,7 +10,10 @@ in {
     port = 9090;
     openFirewall = true;
     # NixOS merges these with its built-in localhost origin.
-    allowed-origins = [ "https://cockpit.dardery.work" ];
+    allowed-origins = [
+      "https://cockpit.dardery.work"
+      "https://192.168.1.9:9090"
+    ];
     settings.WebService.LoginTo = false;
   };
   environment.systemPackages = with pkgs; [ blesh git nano curl htop tmux ];

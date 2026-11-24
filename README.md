@@ -12,7 +12,7 @@ sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDarde
 
 Keep your GitHub access token in root's protected Nix configuration (`access-tokens = github.com=...`), never in this repository or a shell command. For custom host flakes, import `homeserver.nixosModules.default` instead of running the installer. The installer does not partition disks or replace your existing hardware configuration. No Cloudflare token is needed or requested during installation. All local services are installed first; the tunnel stays inactive unless previously connected.
 
-Cockpit: `https://SERVER-IP:9090` (existing system account). Mainsail: `http://SERVER-IP`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
+Cockpit: `https://192.168.1.9:9090` (existing system account). Reserve this LAN address in your router's DHCP settings. If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://SERVER-IP`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
 
 ## AdGuard Home DNS
 
