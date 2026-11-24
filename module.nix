@@ -11,7 +11,7 @@ in {
     openFirewall = true;
     settings.WebService = {
       LoginTo = false;
-      Origins = "https://cockpit.dardery.work wss://cockpit.dardery.work";
+      Origins = lib.mkForce "https://localhost:9090 https://cockpit.dardery.work wss://cockpit.dardery.work";
     };
   };
   environment.systemPackages = with pkgs; [ blesh git nano curl htop tmux ];
