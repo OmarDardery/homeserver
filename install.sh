@@ -8,13 +8,18 @@ if (( EUID != 0 )); then
   exit 1
 fi
 printer_source=""
+tunnel_token_file=""
 while (( $# )); do
   case "$1" in
     --printer-config) printer_source="${2:?Provide a directory or printer.cfg}"; shift 2 ;;
-    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE]'; exit 0 ;;
+    --tunnel-token-file) tunnel_token_file="${2:?Provide the Homelab tunnel token file}"; shift 2 ;;
+    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE] [--tunnel-token-file FILE]'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+if [[ -n "$tunnel_token_file" && ! -s "$tunnel_token_file" ]]; then
+  echo 'Tunnel token file does not exist or is empty.' >&2; exit 1
+fi
 root=/etc/nixos
 managed="$root/homeserver"
 if [[ ! -f "$root/configuration.nix" ]]; then
@@ -42,9 +47,10 @@ if [[ -n "$printer_source" ]]; then
 fi
 install -d -m 0755 "$managed"
 touch "$managed/.homeserver-managed"
-for file in module.nix network-services.nix compose.yaml aiostreams.env.example cloudflared.env.example; do
+for file in module.nix network-services.nix compose.yaml aiostreams.env.example; do
   install -m 0644 "$HOMESERVER_SOURCE/$file" "$managed/$file"
 done
+rm -f "$managed/cloudflared.env.example"
 install -m 0644 "$HOMESERVER_SOURCE/printer-placeholder.cfg" "$managed/printer-placeholder.cfg"
 if [[ ! -e "$root/flake.nix" ]]; then
   cat > "$root/flake.nix" <<FLAKE
@@ -73,8 +79,14 @@ if [[ -n "$printer_source" ]]; then
     install -m 0640 "$printer_source" /srv/printer_data/config/printer.cfg
   fi
 fi
+if [[ -n "$tunnel_token_file" ]]; then
+  install -d -m 0700 /var/lib/homeserver/cloudflared
+  if [[ "$tunnel_token_file" != /var/lib/homeserver/cloudflared/token ]]; then
+    install -m 0600 -o root -g root "$tunnel_token_file" /var/lib/homeserver/cloudflared/token
+  fi
+fi
 nixos-rebuild switch --flake "path:$root#homeserver"
 echo 'Cockpit: https://SERVER-IP:9090 | Mainsail: http://SERVER-IP'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
 echo 'AdGuard Home: http://SERVER-IP:3000 | DNS: port 53'
-echo 'AIOStreams: follow README to create private environment files and start aiostreams-stack.'
+echo 'AIOStreams: configure its private env file; Cloudflared: configure the Homelab token file (see README).' 

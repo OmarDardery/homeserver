@@ -9,7 +9,10 @@ in {
     enable = true;
     port = 9090;
     openFirewall = true;
-    settings.WebService.LoginTo = false;
+    settings.WebService = {
+      LoginTo = false;
+      Origins = "https://cockpit.dardery.work wss://cockpit.dardery.work";
+    };
   };
   environment.systemPackages = with pkgs; [ blesh git nano curl htop tmux ];
   programs.bash.interactiveShellInit = ''

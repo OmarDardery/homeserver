@@ -18,31 +18,55 @@ Cockpit: `https://SERVER-IP:9090` (existing system account). Mainsail: `http://S
 
 Visit `http://SERVER-IP:3000` and complete the initial setup wizard. Keep the admin interface on port 3000 (port 80 is reserved for Mainsail). Select the server's stable LAN IP for the DNS listener on port 53 to avoid conflicting with a local DNS stub resolver; choose an admin password and upstream resolvers. Then configure the router DHCP DNS option to advertise the server's LAN IP. Do not forward DNS or admin ports from the internet. The existing host DNS configuration is not modified. Settings persist in the AdGuard service's state directory.
 
-## AIOStreams and Cloudflare Tunnel
+## AIOStreams (Podman)
 
-Both services share one [Compose file](compose.yaml) and one private Podman network. AIOStreams data is persisted in a named volume. Its host port 8080 is loopback-only; the tunnel reaches it directly at `http://aiostreams:3000`. Configure that origin in the Cloudflare Zero Trust dashboard with the public hostname matching BASE_URL (example: aiostreams.dardery.work). Only expose AIOStreams, not Cockpit, Mainsail, or AdGuard.
+The [Compose file](compose.yaml) manages only AIOStreams. Persistent data uses the existing named volume and the host port 8080 is loopback-only.
 
-First-time setup after installation (do not overwrite existing secrets):
+First-time setup after installation (do not overwrite an existing secret):
 
 ```sh
 sudo install -m 600 -o root -g root /etc/homeserver/aiostreams/aiostreams.env.example /var/lib/homeserver/aiostreams/aiostreams.env
-sudo install -m 600 -o root -g root /etc/homeserver/aiostreams/cloudflared.env.example /var/lib/homeserver/aiostreams/cloudflared.env
 openssl rand -hex 32
 sudoedit /var/lib/homeserver/aiostreams/aiostreams.env
-sudoedit /var/lib/homeserver/aiostreams/cloudflared.env
 sudo systemctl start aiostreams-stack
 ```
 
-Replace SECRET_KEY with the generated key and TUNNEL_TOKEN with your remotely managed tunnel token. Keep the key stable across updates and backups. The stack starts automatically on boot once both environment files exist. Never commit these files, put credentials in Nix expressions, or share container inspection output containing secrets. Set up AIOStreams account authentication in its dashboard before sharing the public URL.
+Replace SECRET_KEY with the generated key, and retain that key across updates. Set BASE_URL=https://aio.dardery.work (also update any existing env file with an older hostname). Enable appropriate AIOStreams application authentication before sharing the URL; Stremio clients may not support a Cloudflare Access login.
 
-In Cockpit, enable administrative access and open **Podman containers** to inspect logs, restart individual containers, or manage images and volumes. Use **Services → aiostreams-stack** for whole-stack start/stop. Individual container edits in Cockpit are not declarative; edit the repository's Compose file and reinstall to persist changes. To update images:
+In Cockpit, use **Podman containers** for container logs and **Services → aiostreams-stack** for whole-stack start/stop. To update the image:
 
 ```sh
 sudo podman-compose -p aiostreams -f /etc/homeserver/aiostreams/compose.yaml pull
 sudo systemctl restart aiostreams-stack
 ```
 
-Images use the upstream stable/latest tags, not immutable digests. Back up the named volume and both protected env files before updating. Stopping the stack does not delete its data volume.
+The image uses the upstream latest tag, not an immutable digest. Back up the named volume and protected env file before updating. Stopping the stack does not delete its data.
+
+## Cloudflare Tunnel (native systemd service)
+
+The existing remotely managed `homelab` tunnel is the sole connector. Cloudflared runs directly on NixOS as `cloudflared.service`, not in Podman. Cloudflare holds the ingress configuration:
+
+| Public hostname | Local origin | Access |
+|---|---|---|
+| 3dprinter.dardery.work | http://127.0.0.1:80 | Cloudflare Access (owner only) |
+| aio.dardery.work | http://127.0.0.1:8080 | Application authentication |
+| cockpit.dardery.work | https://127.0.0.1:9090 | Cloudflare Access (owner only) |
+
+Unmatched routes return 404. AdGuard remains LAN-only. Cockpit uses its local self-signed certificate; verification is disabled only for that loopback origin, and browser traffic remains HTTPS. The printer and Cockpit routes require valid Access JWTs at the connector.
+
+Retrieve the **homelab** connector token (not the deleted aiostreams tunnel token) from the Cloudflare Zero Trust dashboard. Save it as a single-line root-only file, without a TUNNEL_TOKEN= prefix:
+
+```sh
+sudo install -d -m 700 /var/lib/homeserver/cloudflared
+sudo install -m 600 /dev/null /var/lib/homeserver/cloudflared/token
+sudoedit /var/lib/homeserver/cloudflared/token
+sudo systemctl start cloudflared
+sudo systemctl status cloudflared
+```
+
+Run the file creation command only for a new installation; it truncates an existing token file. Alternatively pass `-- --tunnel-token-file /root/homelab-token` to the installer. The token is loaded using systemd credentials, outside Git and the Nix store. The service starts automatically at boot when its token file exists. If rotating the token, replace the file and restart the service.
+
+Migration: the old AIOStreams Cloudflared container is removed when the stack starts. The old tunnel token is invalid; after confirming the new connector works, delete the obsolete `/var/lib/homeserver/aiostreams/cloudflared.env` file. Do not delete the AIOStreams data volume.
 
 ## Printer
 

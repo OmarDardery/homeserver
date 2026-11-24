@@ -12,17 +12,6 @@ services:
     networks:
       - media
 
-  cloudflared:
-    image: docker.io/cloudflare/cloudflared:latest
-    container_name: aiostreams-cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    env_file:
-      - /var/lib/homeserver/aiostreams/cloudflared.env
-    depends_on:
-      - aiostreams
-    networks:
-      - media
 
 networks:
   media:

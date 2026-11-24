@@ -19,6 +19,5 @@ jobs:
         run: |
           sudo mkdir -p /var/lib/homeserver/aiostreams
           sudo cp aiostreams.env.example /var/lib/homeserver/aiostreams/aiostreams.env
-          sudo cp cloudflared.env.example /var/lib/homeserver/aiostreams/cloudflared.env
           sudo chmod 600 /var/lib/homeserver/aiostreams/*.env
           sudo docker compose -f compose.yaml config --quiet
