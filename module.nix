@@ -1,0 +1,67 @@
+{ pkgs, lib, ... }:
+let data = "/srv/printer_data";
+in {
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  time.timeZone = lib.mkDefault "Africa/Cairo";
+  security.polkit.enable = true;
+  services.cockpit = {
+    enable = true;
+    port = 9090;
+    openFirewall = true;
+    settings.WebService.LoginTo = false;
+  };
+  environment.systemPackages = with pkgs; [ blesh git nano curl htop tmux ];
+  programs.bash.interactiveShellInit = ''
+    if [[ $- == *i* && -t 0 && -t 1 && $TERM != dumb && -z ''${BLE_VERSION:-} ]]; then
+      source "$(${pkgs.blesh}/bin/blesh-share)/ble.sh" --attach=none
+      ble-attach
+    fi
+  '';
+  users.groups.klipper = {};
+  users.users.klipper = {
+    isSystemUser = true;
+    group = "klipper";
+    extraGroups = [ "dialout" ];
+  };
+  systemd.tmpfiles.rules = [
+    "d ${data} 0750 klipper klipper -"
+    "d ${data}/config 0750 klipper klipper -"
+    "d ${data}/gcodes 0750 klipper klipper -"
+    "d ${data}/logs 0750 klipper klipper -"
+    "Z ${data}/config - klipper klipper -"
+  ];
+  services.klipper = {
+    enable = true;
+    user = "klipper";
+    group = "klipper";
+    configDir = "${data}/config";
+    configFile = ./printer-placeholder.cfg;
+    mutableConfig = true;
+    logFile = "${data}/logs/klippy.log";
+  };
+  systemd.services.klipper.serviceConfig.ReadWritePaths = [ data ];
+  services.moonraker = {
+    enable = true;
+    user = "klipper";
+    group = "klipper";
+    stateDir = data;
+    address = "127.0.0.1";
+    port = 7125;
+    allowSystemControl = false;
+    settings.authorization = {
+      trusted_clients = [ "192.168.1.0/24" "127.0.0.1" "::1" ];
+      force_logins = true;
+    };
+  };
+  services.mainsail = {
+    enable = true;
+    hostName = "mainsail";
+    nginx = {
+      default = true;
+      extraConfig = "client_max_body_size 1024M;";
+      locations."~ ^/(printer|api|access|machine|server)/".recommendedProxySettings = true;
+      locations."/websocket".recommendedProxySettings = true;
+    };
+  };
+  networking.firewall.allowedTCPPorts = [ 80 ];
+}
