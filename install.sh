@@ -45,6 +45,13 @@ touch "$managed/.homeserver-managed"
 for file in module.nix network-services.nix compose.yaml aiostreams.env.example connect.sh; do
   install -m 0644 "$HOMESERVER_SOURCE/$file" "$managed/$file"
 done
+install -d -m 0755 "$managed/secrets/cockpit"
+for file in default.nix backend.py; do
+  install -m 0644 "$HOMESERVER_SOURCE/secrets/$file" "$managed/secrets/$file"
+done
+for file in manifest.json index.html index.js style.css; do
+  install -m 0644 "$HOMESERVER_SOURCE/secrets/cockpit/$file" "$managed/secrets/cockpit/$file"
+done
 rm -f "$managed/cloudflared.env.example"
 install -m 0644 "$HOMESERVER_SOURCE/printer-placeholder.cfg" "$managed/printer-placeholder.cfg"
 if [[ ! -e "$root/flake.nix" ]]; then
@@ -53,14 +60,29 @@ if [[ ! -e "$root/flake.nix" ]]; then
   # homeserver-installer-managed
   description = "Existing NixOS host with homeserver services";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/$HOMESERVER_NIXPKGS_REV";
-  outputs = { nixpkgs, ... }: {
+  inputs.sops-nix = {
+    url = "github:Mic92/sops-nix/$HOMESERVER_SOPS_REV";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+  outputs = { nixpkgs, sops-nix, ... }: {
     nixosConfigurations.homeserver = nixpkgs.lib.nixosSystem {
       system = "$(uname -m)-linux";
-      modules = [ ./configuration.nix ./homeserver/module.nix ];
+      modules = [ ./configuration.nix sops-nix.nixosModules.sops ./homeserver/module.nix ];
     };
   };
 }
 FLAKE
+else
+  # Upgrade older installer-generated flakes while preserving their Nixpkgs pin.
+  if ! grep -q "inputs.sops-nix" "$root/flake.nix"; then
+    tmp=$(mktemp "$root/.flake.XXXXXX")
+    sed -e '/^  outputs =/i\  inputs.sops-nix = { url = "github:Mic92/sops-nix/'"$HOMESERVER_SOPS_REV"'"; inputs.nixpkgs.follows = "nixpkgs"; };' \
+      -e 's/outputs = { nixpkgs, ... }:/outputs = { nixpkgs, sops-nix, ... }:/' \
+      -e 's@modules = \[ ./configuration.nix ./homeserver/module.nix \];@modules = [ ./configuration.nix sops-nix.nixosModules.sops ./homeserver/module.nix ];@' "$root/flake.nix" > "$tmp"
+    cp -n "$root/flake.nix" "$root/flake.nix.pre-secrets"
+    chmod 0644 "$tmp"
+    mv "$tmp" "$root/flake.nix"
+  fi
 fi
 nix --extra-experimental-features 'nix-command flakes' build --no-link "path:$root#nixosConfigurations.homeserver.config.system.build.toplevel"
 if [[ -n "$printer_source" ]]; then
@@ -78,5 +100,5 @@ nixos-rebuild switch --flake "path:$root#homeserver"
 echo 'Cockpit: https://SERVER-IP:9090 | Mainsail: http://SERVER-IP'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
 echo 'AdGuard Home: http://SERVER-IP:3000 | DNS: port 53'
-echo 'AIOStreams: initialized automatically; credentials in /var/lib/homeserver/aiostreams/aiostreams.env'
-echo 'Cloudflare: optional; later run sudo homeserver-connect.'
+echo 'AIOStreams: initialized automatically; credentials in Cockpit → Secrets'
+echo 'Cloudflare: optional; add CLOUDFLARE_TUNNEL_TOKEN in Cockpit → Secrets.'

@@ -1,12 +1,16 @@
 {
   description = "Native NixOS homeserver installer";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-  outputs = { self, nixpkgs }:
+  inputs.sops-nix = {
+    url = "github:Mic92/sops-nix/d5abe5e53200ad48254e8e6bd95e6cef94e66577";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+  outputs = { self, nixpkgs, sops-nix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAll = nixpkgs.lib.genAttrs systems;
     in {
-      nixosModules.default = import ./module.nix;
+      nixosModules.default = { imports = [ sops-nix.nixosModules.sops ./module.nix ]; };
       nixosConfigurations.test = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [ self.nixosModules.default {
@@ -19,10 +23,11 @@
         let pkgs = nixpkgs.legacyPackages.${system}; in {
           default = pkgs.writeShellApplication {
             name = "homeserver-install";
-            runtimeInputs = [ pkgs.coreutils pkgs.findutils ];
+            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused ];
             text = ''
               export HOMESERVER_SOURCE=${self.outPath}
               export HOMESERVER_NIXPKGS_REV=${nixpkgs.rev}
+              export HOMESERVER_SOPS_REV=${sops-nix.rev}
               ${builtins.readFile ./install.sh}
             '';
           };
