@@ -16,11 +16,14 @@ STATE = Path("/var/lib/homeserver/secrets")
 KEY = STATE / "age.key"
 STORE = STATE / "runtime.enc"
 GITHUB_TOKEN = STATE / "github.token"
-GITHUB_API = "https://api.github.com/repos/OmarDardery/homeserver/contents/secrets/runtime.enc"
+GITHUB_REPO = "https://api.github.com/repos/OmarDardery/homeserver"
+GITHUB_API = GITHUB_REPO + "/contents/secrets/runtime.enc"
+GITHUB_HISTORY = GITHUB_REPO + "/commits?path=secrets/runtime.enc&sha=main&per_page=15"
 RUNTIME = Path("/run/homeserver-secrets")
 DECRYPTED = Path("/run/secrets/homeserver-runtime")
 OLD_ENV = Path("/var/lib/homeserver/aiostreams/aiostreams.env")
 OLD_TOKEN = Path("/var/lib/homeserver/cloudflared/token")
+RESERVED = {"GITHUB_TOKEN", "HOMESERVER_GITHUB_TOKEN"}
 REQUIRED = {"BASE_URL", "SECRET_KEY", "AIOSTREAMS_AUTH", "AIOSTREAMS_AUTH_REQUIRED"}
 TOKEN = "CLOUDFLARE_TUNNEL_TOKEN"
 NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,127}")
@@ -129,8 +132,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def github_api(token, method="GET", payload=None):
-    url = GITHUB_API + ("?ref=main" if method == "GET" else "")
+def github_api(token, method="GET", payload=None, url=None):
+    url = url or GITHUB_API + ("?ref=main" if method == "GET" else "")
     body = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(url, data=body, method=method, headers={
         "Authorization": "Bearer " + token,
@@ -192,10 +195,10 @@ def remote_read(token):
     return sha, encrypted_document(blob)
 
 
-def remote_write(token, blob, previous=None):
+def remote_write(token, blob, previous=None, message="Update encrypted homeserver secrets"):
     # Validate ciphertext and its decryptability before uploading it.
     decrypt_blob(blob)
-    payload = {"message": "Update encrypted homeserver secrets", "branch": "main",
+    payload = {"message": message, "branch": "main",
                "content": base64.b64encode(blob).decode("ascii")}
     if previous is not None:
         payload["sha"] = previous[0]
@@ -228,7 +231,17 @@ def github_connect(token):
     atomic(GITHUB_TOKEN, (token + "\n").encode())
 
 
-def commit_update(data):
+def change_message(old, data):
+    # Variable names only; values never appear in commit messages.
+    parts = []
+    for label, names in (("set", sorted(k for k in data if old.get(k) != data[k])),
+                         ("remove", sorted(set(old) - set(data)))):
+        if names:
+            parts.append(label + " " + ", ".join(names[:8]) + (" …" if len(names) > 8 else ""))
+    return "Secrets: " + ("; ".join(parts) or "update")
+
+
+def commit_update(data, old=None):
     token = token_value()
     if token is None:
         save(data)
@@ -237,7 +250,8 @@ def commit_update(data):
     if remote is None or remote[1] != STORE.read_bytes():
         raise Invalid("Remote secrets differ or are missing. Pull or reconnect before editing.")
     blob = encrypt(data)
-    remote_write(token, blob, remote)
+    remote_write(token, blob, remote,
+                 change_message(old, data) if old is not None else "Update encrypted homeserver secrets")
     # GitHub is authoritative. A crash here is recoverable using Pull from GitHub.
     atomic(STORE, blob)
 
@@ -278,8 +292,56 @@ def refresh():
 def update(old, data):
     if old == data:
         raise Invalid("Value unchanged. Use Retry apply if the prior restart failed.")
-    commit_update(data)
+    commit_update(data, old)
     apply_changes(old, data)
+
+
+def history():
+    token = token_value()
+    if token is None:
+        return []
+    commits = github_api(token, url=GITHUB_HISTORY)
+    try:
+        return [{"sha": c["sha"][:7], "message": c["commit"]["message"].splitlines()[0][:200],
+                 "date": c["commit"]["committer"]["date"],
+                 "author": (c.get("author") or {}).get("login") or c["commit"]["author"]["name"]}
+                for c in (commits or [])]
+    except (TypeError, KeyError, AttributeError, IndexError):
+        raise Invalid("Unexpected GitHub history response.") from None
+
+
+def check_name(name):
+    if not isinstance(name, str) or not NAME.fullmatch(name) or name in RESERVED:
+        raise Invalid("Invalid or reserved variable name.")
+    return name
+
+
+def parse_import(text, data):
+    if not isinstance(text, str) or len(text) > 60000:
+        raise Invalid("Paste a dotenv document under 60 KB.")
+    changed = dict(data)
+    for number, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        name, sep, value = line.partition("=")
+        name = name.strip()
+        if not sep or not NAME.fullmatch(name) or name in RESERVED:
+            raise Invalid(f"Line {number}: expected NAME=value with a valid, unreserved name.")
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        if not VALUE.fullmatch(value):
+            raise Invalid(f"Line {number} ({name}): value contains unsupported characters.")
+        changed[name] = value
+    return validate(changed)
+
+
+def describe(data):
+    return [{"name": n, "configured": n in data, "required": n in REQUIRED,
+             "scope": "cloudflared" if n == TOKEN else "aiostreams"}
+            for n in sorted(set(data) | {TOKEN})]
 
 
 def apply_changes(old, data):
@@ -326,12 +388,17 @@ def main():
         elif action == "github-pull":
             pull_remote(data)
         elif action == "list":
-            print(json.dumps(sorted(set(data) | {TOKEN})))
+            print(json.dumps(describe(data)))
+        elif action == "history":
+            print(json.dumps(history()))
+        elif action == "export":
+            # Ciphertext only: the age identity never leaves the host.
+            sys.stdout.write(encrypted_document(STORE.read_bytes()).decode())
+        elif action == "import":
+            update(data, parse_import(json.loads(sys.stdin.read(65536)).get("text"), data))
         elif action in ("set", "delete", "reveal"):
             request = json.loads(sys.stdin.read(65536))
-            name = request.get("name")
-            if not isinstance(name, str) or not NAME.fullmatch(name) or name in {"GITHUB_TOKEN", "HOMESERVER_GITHUB_TOKEN"}:
-                raise Invalid("Invalid or reserved variable name.")
+            name = check_name(request.get("name"))
             if action == "reveal":
                 print(json.dumps(data.get(name)))
                 return

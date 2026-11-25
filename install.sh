@@ -132,9 +132,9 @@ if [[ -n "$age_key_source" || -f "$remote_cipher" ]]; then
   fi
 fi
 nixos-rebuild switch --flake "path:$root#homeserver"
-echo 'Cockpit: https://SERVER-IP:9090 | Mainsail: http://SERVER-IP'
+echo 'Cockpit: https://192.168.1.240:9090 | Mainsail: http://192.168.1.240'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
-echo 'AdGuard Home: http://SERVER-IP:3000 | DNS: port 53'
+echo 'AdGuard Home: http://192.168.1.240:3000 | DNS: port 53'
 echo 'AIOStreams: initialized automatically; credentials in Cockpit → Secrets'
 echo 'GitHub secrets: optional; connect GitHub in Cockpit → Secrets.'
 echo 'Cloudflare: optional; add CLOUDFLARE_TUNNEL_TOKEN in Cockpit → Secrets.'

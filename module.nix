@@ -10,7 +10,19 @@ in {
     HandleLidSwitch = "ignore";
     HandleLidSwitchExternalPower = "ignore";
     HandleLidSwitchDocked = "ignore";
+    # Always-on server: idle time and sleep keys never suspend or hibernate.
+    IdleAction = "ignore";
+    HandleSuspendKey = "ignore";
+    HandleSuspendKeyLongPress = "ignore";
+    HandleHibernateKey = "ignore";
+    HandleHibernateKeyLongPress = "ignore";
   };
+  # Refuse every sleep state, including requests from Cockpit, GNOME or systemctl.
+  systemd.targets = lib.genAttrs
+    [ "sleep" "suspend" "hibernate" "hybrid-sleep" "suspend-then-hibernate" ]
+    (_: { enable = false; });
+  # Blank the built-in display after 5 idle minutes to save power and the panel.
+  boot.kernelParams = [ "consoleblank=300" ];
   # Stable serial alias for the SKR Mini E3 V3.0 running Klipper.
   services.udev.extraRules = ''
     SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="614e", SYMLINK+="klipper-mcu", GROUP="dialout", MODE="0660"
@@ -22,7 +34,7 @@ in {
     # NixOS merges these with its built-in localhost origin.
     allowed-origins = [
       "https://cockpit.dardery.work"
-      "https://192.168.1.9:9090"
+      "https://192.168.1.240:9090"
     ];
     settings.WebService.LoginTo = false;
   };
