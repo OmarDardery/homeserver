@@ -10,6 +10,14 @@ in {
     HandleLidSwitch = "ignore";
     HandleLidSwitchExternalPower = "ignore";
     HandleLidSwitchDocked = "ignore";
+    # Sleep requests suspend to RAM only; never hibernate to disk.
+    HandleHibernateKey = "suspend";
+    HandleHibernateKeyLongPress = "suspend";
+  };
+  systemd.sleep.settings.Sleep = {
+    AllowHibernation = "no";
+    AllowHybridSleep = "no";
+    AllowSuspendThenHibernate = "no";
   };
   # Stable serial alias for the SKR Mini E3 V3.0 running Klipper.
   services.udev.extraRules = ''
