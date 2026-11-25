@@ -22,7 +22,7 @@ in {
     # NixOS merges these with its built-in localhost origin.
     allowed-origins = [
       "https://cockpit.dardery.work"
-      "https://192.168.1.9:9090"
+      "https://192.168.1.240:9090"
     ];
     settings.WebService.LoginTo = false;
   };

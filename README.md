@@ -12,11 +12,11 @@ sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDarde
 
 Keep your GitHub access token in root's protected Nix configuration (`access-tokens = github.com=...`), never in this repository or a shell command. For custom host flakes, import `homeserver.nixosModules.default` instead of running the installer. The installer does not partition disks or replace your existing hardware configuration. No Cloudflare token is needed or requested during installation. All local services are installed first; the tunnel stays inactive unless previously connected.
 
-Cockpit: `https://192.168.1.9:9090` (existing system account). Reserve this LAN address in your router's DHCP settings. If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://SERVER-IP`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
+Cockpit: `https://192.168.1.240:9090` (existing system account). Reserve this LAN address in your router's DHCP settings. If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://192.168.1.240`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
 
 ## AdGuard Home DNS
 
-Visit `http://SERVER-IP:3000` and complete the initial setup wizard. Keep the admin interface on port 3000 (port 80 is reserved for Mainsail). Select the server's stable LAN IP for the DNS listener on port 53 to avoid conflicting with a local DNS stub resolver; choose an admin password and upstream resolvers. Then configure the router DHCP DNS option to advertise the server's LAN IP. Do not forward DNS or admin ports from the internet. The existing host DNS configuration is not modified. Settings persist in the AdGuard service's state directory.
+Visit `http://192.168.1.240:3000` and complete the initial setup wizard. Keep the admin interface on port 3000 (port 80 is reserved for Mainsail). Select the server's stable LAN IP for the DNS listener on port 53 to avoid conflicting with a local DNS stub resolver; choose an admin password and upstream resolvers. Then configure the router DHCP DNS option to advertise the server's LAN IP. Do not forward DNS or admin ports from the internet. The existing host DNS configuration is not modified. Settings persist in the AdGuard service's state directory.
 
 ## AIOStreams (Podman)
 
@@ -24,7 +24,7 @@ The [Compose file](compose.yaml) manages only AIOStreams. Persistent data uses t
 
 On first start the encrypted secret manager generates the encryption key and a random admin password. Existing credentials are migrated and preserved. Open **Cockpit → Tools → Secrets** with administrative access to reveal or edit credentials.
 
-Local preview without Cloudflare: if SSH is enabled on the host, forward port 8080 using `ssh -L 8080:127.0.0.1:8080 USER@SERVER-IP`, then open `http://localhost:8080`. The canonical addon URL is `https://aio.dardery.work`; remote clients require the tunnel to be connected.
+Local preview without Cloudflare: if SSH is enabled on the host, forward port 8080 using `ssh -L 8080:127.0.0.1:8080 USER@192.168.1.240`, then open `http://localhost:8080`. The canonical addon URL is `https://aio.dardery.work`; remote clients require the tunnel to be connected.
 
 In Cockpit, use **Podman containers** for container logs and **Services → aiostreams-stack** for whole-stack start/stop. To update the image:
 
