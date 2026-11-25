@@ -52,8 +52,9 @@ class SecretTests(unittest.TestCase):
                 data = b.decrypt()
                 data["EXTRA_VAR"] = "new-value"
                 with patch.object(b, "remote_read", return_value=("a"*40, old)), patch.object(b, "github_api", return_value={"content":{"sha":"b"*40}}) as api:
-                    b.commit_update(data)
+                    b.commit_update(data, b.decrypt())
                     payload = api.call_args.args[2]
+                    self.assertEqual(payload["message"], "Secrets: set EXTRA_VAR")
                     self.assertEqual(payload["sha"], "a"*40)
                     self.assertEqual(b.decrypt_blob(b.base64.b64decode(payload["content"])), data)
                     self.assertNotIn("new-value", str(payload))
@@ -69,6 +70,39 @@ class SecretTests(unittest.TestCase):
                     apply.assert_called_once()
                 with self.assertRaises(b.Invalid):
                     b.encrypted_document(b'{"data":"plaintext","sops":{}}')
+
+    def test_import_history_and_messages(self):
+        base = {"BASE_URL": "https://x", "SECRET_KEY": "a" * 64,
+                "AIOSTREAMS_AUTH": "admin:pw", "AIOSTREAMS_AUTH_REQUIRED": "true"}
+        out = b.parse_import("# c\n\nexport NEW_ONE=\"v1\"\nOTHER='x:y'\n", base)
+        self.assertEqual(out["NEW_ONE"], "v1")
+        self.assertEqual(out["OTHER"], "x:y")
+        self.assertNotIn("NEW_ONE", base)
+        for bad in ("lower=1", "NO_SEP", "GITHUB_TOKEN=x", "SPACED=a b", "AIOSTREAMS_AUTH_REQUIRED=false"):
+            with self.assertRaises(b.Invalid):
+                b.parse_import(bad, base)
+        changed = dict(out, SECRET_KEY="b" * 64)
+        changed.pop("OTHER")
+        msg = b.change_message(base | {"OTHER": "x:y"}, changed)
+        self.assertEqual(msg, "Secrets: set NEW_ONE, SECRET_KEY; remove OTHER")
+        self.assertNotIn("b" * 64, msg)
+        rows = {r["name"]: r for r in b.describe(base)}
+        self.assertFalse(rows[b.TOKEN]["configured"])
+        self.assertEqual(rows[b.TOKEN]["scope"], "cloudflared")
+        self.assertTrue(rows["SECRET_KEY"]["required"])
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(b, "GITHUB_TOKEN", Path(d) / "t"):
+                self.assertEqual(b.history(), [])
+                b.GITHUB_TOKEN.write_text("github_pat_x\n")
+                api = [{"sha": "c" * 40, "author": None, "commit": {
+                    "message": "Secrets: set A\n\nbody", "committer": {"date": "2026-01-01T00:00:00Z"},
+                    "author": {"name": "Host"}}}]
+                with patch.object(b, "github_api", return_value=api) as call:
+                    self.assertEqual(b.history(), [{"sha": "ccccccc", "message": "Secrets: set A",
+                                                    "date": "2026-01-01T00:00:00Z", "author": "Host"}])
+                    self.assertEqual(call.call_args.kwargs["url"], b.GITHUB_HISTORY)
+                with patch.object(b, "github_api", return_value=[{"bad": 1}]), self.assertRaises(b.Invalid):
+                    b.history()
 
 
 if __name__ == "__main__":
