@@ -9,12 +9,17 @@ let
       exec ${pkgs.python3}/bin/python3 ${./backend.py} "$@"
     '';
   };
+  updater = pkgs.writeShellApplication {
+    name = "homeserver-update";
+    runtimeInputs = [ helper pkgs.curl pkgs.gnugrep config.nix.package ];
+    text = builtins.readFile ./update.sh;
+  };
   plugin = pkgs.runCommand "cockpit-homeserver-secrets" {} ''
     mkdir -p "$out/share/cockpit/homeserver-secrets"
     cp ${./cockpit}/* "$out/share/cockpit/homeserver-secrets/"
   '';
 in {
-  environment.systemPackages = [ helper pkgs.sops pkgs.age ];
+  environment.systemPackages = [ helper updater pkgs.sops pkgs.age ];
   services.cockpit.plugins = [ plugin ];
   sops = {
     age.keyFile = "/var/lib/homeserver/secrets/age.key";
@@ -43,6 +48,21 @@ in {
   systemd.services.sops-install-secrets = {
     requires = [ "homeserver-secrets-init.service" ];
     after = [ "homeserver-secrets-init.service" ];
+  };
+  # Started from Cockpit. It survives the switch it triggers: never restarted
+  # or stopped by switch-to-configuration (same approach as system.autoUpgrade).
+  systemd.services.homeserver-update = {
+    description = "Update the homeserver from GitHub";
+    restartIfChanged = false;
+    unitConfig.X-StopOnRemoval = false;
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    path = [ "/run/current-system/sw" ];
+    environment.HOME = "/root";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${updater}/bin/homeserver-update";
+    };
   };
   systemd.services.homeserver-secrets-materialize = {
     description = "Prepare runtime-only homeserver credentials";

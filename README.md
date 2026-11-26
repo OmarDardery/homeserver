@@ -73,6 +73,17 @@ Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initia
 
 Re-run the installation command to refresh the managed module; the host flake pins the initial Nixpkgs revision. Update that revision deliberately in `/etc/nixos/flake.nix` before rebuilding if desired. Rebuild with `sudo nixos-rebuild switch --flake path:/etc/nixos#homeserver`. Use `sudo nixos-rebuild switch --rollback` to roll back an activated generation; printer data is not rolled back. Back up `/etc/nixos` and `/srv/printer_data` separately. Do not run during an active print.
 
+
+### Updating from Cockpit
+
+**Cockpit → Tools → Secrets → Server update → Update server** runs `homeserver-update.service`, which:
+
+1. refuses while a print is active or paused;
+2. publishes this server's encrypted secrets to GitHub if the file is missing there, and stops if GitHub holds different ones (use **Pull** or **Push** first);
+3. runs `nix run --refresh github:OmarDardery/homeserver`: rebuilds NixOS, deploys the printer config and restarts Klipper.
+
+The repository is private, so the update reuses the fine-grained token saved under GitHub sync for this fetch (Contents: read and write also covers the download); without it, root's `access-tokens` in nix.conf is used. The service is never restarted by the switch it triggers, and the Cockpit page resumes the log after Cockpit reconnects. **Push to GitHub** replaces the encrypted file on GitHub with this server's ciphertext; values and the age key never leave the server. The button exists after one manual install of this version.
+
 ## Checks
 
 CI evaluates a test NixOS host and checks the installer app. Hardware operation requires on-device verification.

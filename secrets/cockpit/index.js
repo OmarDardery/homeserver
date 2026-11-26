@@ -60,11 +60,13 @@ function setStatus(text, kind = "info") {
     const s = $("status");
     s.hidden = !text; s.textContent = text || ""; s.dataset.kind = kind;
 }
+let updateRunning = false;
 function setBusy(on) {
     busy = on;
     document.body.classList.toggle("busy", on);
     for (const b of document.querySelectorAll("button, input, textarea"))
         if (!b.matches("[data-close], #filter")) b.disabled = on;
+    if (updateRunning) $("update").disabled = true;
 }
 async function perform(fn, done) {
     if (busy) return false;
@@ -262,4 +264,58 @@ $("pull").onclick = () => {
         quiet(perform(async () => { await invoke("github-pull"); await load(); }, "Pulled from GitHub and applied."));
 };
 
+$("push").onclick = () => {
+    if (confirm("Replace the encrypted secrets file on GitHub with this server's version? GitHub keeps the old one in its history."))
+        quiet(perform(async () => {
+            const msg = JSON.parse(await invoke("github-push"));
+            await load();
+            setStatus(msg, "ok");
+        }));
+};
+
+/* Server update: runs as homeserver-update.service so it survives Cockpit
+   and service restarts during the switch; this page only starts and watches it. */
+const UNIT = "homeserver-update.service";
+let updateTimer = null;
+const root = args => cockpit.spawn(args, { superuser: "require", err: "message" });
+async function unitState() {
+    const out = await root(["systemctl", "show", UNIT, "-p", "ActiveState", "-p", "Result", "-p", "InvocationID"]);
+    return Object.fromEntries(out.trim().split("\n").map(l => l.split("=", 2)));
+}
+async function pollUpdate() {
+    clearTimeout(updateTimer);
+    let s;
+    try { s = await unitState(); } catch (ex) {
+        // Cockpit may be restarting during the switch; keep trying.
+        updateTimer = setTimeout(pollUpdate, 3000);
+        return;
+    }
+    const running = s.ActiveState === "activating" || s.ActiveState === "active";
+    if (s.InvocationID) {
+        try {
+            const log = await root(["journalctl", "-o", "cat", "--no-pager", "_SYSTEMD_INVOCATION_ID=" + s.InvocationID]);
+            const pre = $("update-log");
+            const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+            pre.hidden = false; pre.textContent = log || "Starting…";
+            if (atEnd) pre.scrollTop = pre.scrollHeight;
+        } catch (_) {}
+    }
+    const [label, state] = running ? ["Updating…", "info"]
+        : !s.InvocationID ? ["Idle", "unknown"]
+        : s.Result === "success" ? ["Last update succeeded", "ok"] : ["Last update failed", "error"];
+    Object.assign($("update-badge"), { textContent: label }).dataset.state = state;
+    updateRunning = running;
+    $("update").disabled = running || busy;
+    if (running) updateTimer = setTimeout(pollUpdate, 2000);
+}
+$("update").onclick = () => {
+    if (!confirm("Update the server from GitHub now? Services may restart. Do not use while printing."))
+        return;
+    quiet(perform(async () => {
+        await root(["systemctl", "start", "--no-block", UNIT]);
+    }, "Update started. Follow the log below."));
+    setTimeout(pollUpdate, 1000);
+};
+
 quiet(perform(load));
+quiet(pollUpdate());

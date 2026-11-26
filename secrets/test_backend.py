@@ -71,6 +71,40 @@ class SecretTests(unittest.TestCase):
                 with self.assertRaises(b.Invalid):
                     b.encrypted_document(b'{"data":"plaintext","sops":{}}')
 
+    def test_push_and_ensure(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            with patch.multiple(b, STATE=p, KEY=p/"age.key", STORE=p/"runtime.enc",
+                                GITHUB_TOKEN=p/"github.token", OLD_ENV=p/"old.env",
+                                OLD_TOKEN=p/"old.token"):
+                b.initialize()
+                local = b.STORE.read_bytes()
+                self.assertIn("local", b.ensure_remote())
+                with self.assertRaises(b.Invalid):
+                    b.push_remote()
+                b.GITHUB_TOKEN.write_text("github_pat_" + "a" * 40 + "\n")
+                data = b.decrypt()
+                data["OTHER_VAR"] = "x"
+                other = b.encrypt(data)
+                with patch.object(b, "remote_read", return_value=None), patch.object(b, "github_api", return_value={"content":{"sha":"a"*40}}) as api:
+                    self.assertIn("Published", b.ensure_remote())
+                    self.assertEqual(b.base64.b64decode(api.call_args.args[2]["content"]), local)
+                with patch.object(b, "remote_read", return_value=("a"*40, local)), patch.object(b, "remote_write") as write:
+                    self.assertIn("match", b.ensure_remote())
+                    self.assertIn("already", b.push_remote())
+                    write.assert_not_called()
+                with patch.object(b, "remote_read", return_value=("a"*40, other)), patch.object(b, "remote_write") as write:
+                    with self.assertRaises(b.Invalid):
+                        b.ensure_remote()
+                    write.assert_not_called()
+                with patch.object(b, "remote_read", return_value=("a"*40, other)), patch.object(b, "github_api", return_value={"content":{"sha":"b"*40}}) as api:
+                    self.assertIn("pushed", b.push_remote())
+                    payload = api.call_args.args[2]
+                    self.assertEqual(payload["sha"], "a"*40)
+                    self.assertEqual(b.base64.b64decode(payload["content"]), local)
+                    self.assertNotIn("github_pat_", str(payload))
+                self.assertEqual(b.STORE.read_bytes(), local)
+
     def test_import_history_and_messages(self):
         base = {"BASE_URL": "https://x", "SECRET_KEY": "a" * 64,
                 "AIOSTREAMS_AUTH": "admin:pw", "AIOSTREAMS_AUTH_REQUIRED": "true"}

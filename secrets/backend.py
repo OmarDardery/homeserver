@@ -269,6 +269,34 @@ def pull_remote(old):
         apply_changes(old, data)
 
 
+def push_remote():
+    # Explicit overwrite of GitHub with this server's ciphertext (UI confirms first).
+    token = token_value()
+    if token is None:
+        raise Invalid("Connect GitHub first.")
+    remote = remote_read(token)
+    local = STORE.read_bytes()
+    if remote is not None and remote[1] == local:
+        return "GitHub already has these encrypted secrets."
+    remote_write(token, local, remote, "Push encrypted homeserver secrets from server")
+    return "Encrypted secrets pushed to GitHub."
+
+
+def ensure_remote():
+    # Used before a server update: publish if missing, never overwrite a different remote.
+    token = token_value()
+    if token is None:
+        return "GitHub not connected; secrets stay local."
+    remote = remote_read(token)
+    local = STORE.read_bytes()
+    if remote is None:
+        remote_write(token, local)
+        return "Published encrypted secrets to GitHub."
+    if remote[1] != local:
+        raise Invalid("GitHub secrets differ from this server. Use Pull or Push in Cockpit, then update again.")
+    return "Encrypted secrets match GitHub."
+
+
 def materialize(data):
     validate(data)
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -387,6 +415,10 @@ def main():
             github_connect(json.loads(sys.stdin.read(65536)).get("token"))
         elif action == "github-pull":
             pull_remote(data)
+        elif action == "github-push":
+            print(json.dumps(push_remote()))
+        elif action == "github-ensure":
+            print(ensure_remote())
         elif action == "list":
             print(json.dumps(describe(data)))
         elif action == "history":

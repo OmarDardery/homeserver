@@ -68,7 +68,7 @@ for file in module.nix network-services.nix compose.yaml aiostreams.env.example 
   install -m 0644 "$HOMESERVER_SOURCE/$file" "$managed/$file"
 done
 install -d -m 0755 "$managed/secrets/cockpit"
-for file in default.nix backend.py; do
+for file in default.nix backend.py update.sh; do
   install -m 0644 "$HOMESERVER_SOURCE/secrets/$file" "$managed/secrets/$file"
 done
 for file in manifest.json index.html index.js style.css; do
