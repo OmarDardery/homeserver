@@ -73,7 +73,12 @@ The purge primes the nozzle, draws two solid 0.8 mm × 0.4 mm lines just in fron
 
 Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune after deploying: pressure advance, bed PID (`PID_CALIBRATE HEATER=heater_bed TARGET=65`, then `SAVE_CONFIG`), and the bed screw positions for `SCREWS_TILT_CALCULATE`.
 
-## Maintenance
+## OrcaSlicer profile
+
+[orca/](orca) holds the HyperCube profiles: printer `HyperCube 300 V2 0.4 Volcano` (Klipper flavour, 300 × 300 × 300, START_PRINT/END_PRINT/M600 wired up, object labels on, Bowden retraction 4 mm), process `0.20mm Standard @HyperCube` and filament `Patron PETG HS @HyperCube` (245/240 °C, bed 70/65 °C). In OrcaSlicer use **File → Import → Import Configs…** and select the three JSON files. If import is refused, copy them into `~/.config/OrcaSlicer/user/default/machine`, `process` and `filament` respectively and restart OrcaSlicer.
+
+They were tested by slicing with OrcaSlicer 2.5.2 and running the resulting G-code through Klipper in batch mode against this configuration. Smooth mode is a ceiling: OrcaSlicer's per-feature acceleration commands are clamped to it while `SMOOTH_MODE` is active.
+
 
 Re-run the installation command to refresh the managed module; the host flake pins the initial Nixpkgs revision. Update that revision deliberately in `/etc/nixos/flake.nix` before rebuilding if desired. Rebuild with `sudo nixos-rebuild switch --flake path:/etc/nixos#homeserver`. Use `sudo nixos-rebuild switch --rollback` to roll back an activated generation; printer data is not rolled back. Back up `/etc/nixos` and `/srv/printer_data` separately. Do not run during an active print.
 

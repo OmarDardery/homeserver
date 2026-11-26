@@ -1,0 +1,116 @@
+{
+    "type": "machine",
+    "name": "HyperCube 300 V2 0.4 Volcano",
+    "from": "User",
+    "inherits": "",
+    "printer_settings_id": "HyperCube 300 V2 0.4 Volcano",
+    "printer_technology": "FFF",
+    "gcode_flavor": "klipper",
+    "printer_structure": "corexy",
+    "printable_area": [
+        "0x0",
+        "300x0",
+        "300x300",
+        "0x300"
+    ],
+    "printable_height": "300",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "nozzle_type": "brass",
+    "printer_variant": "0.4",
+    "use_relative_e_distances": "1",
+    "use_firmware_retraction": "0",
+    "retraction_length": [
+        "4"
+    ],
+    "retraction_speed": [
+        "40"
+    ],
+    "deretraction_speed": [
+        "30"
+    ],
+    "retraction_minimum_travel": [
+        "1.5"
+    ],
+    "retract_when_changing_layer": [
+        "1"
+    ],
+    "wipe": [
+        "1"
+    ],
+    "z_hop": [
+        "0.4"
+    ],
+    "z_hop_types": [
+        "Normal Lift"
+    ],
+    "machine_limits_usage": "time_estimate_only",
+    "machine_max_acceleration_x": [
+        "1500"
+    ],
+    "machine_max_acceleration_y": [
+        "1500"
+    ],
+    "machine_max_acceleration_z": [
+        "150"
+    ],
+    "machine_max_acceleration_e": [
+        "5000"
+    ],
+    "machine_max_acceleration_extruding": [
+        "1500"
+    ],
+    "machine_max_acceleration_retracting": [
+        "1500"
+    ],
+    "machine_max_acceleration_travel": [
+        "1500"
+    ],
+    "machine_max_speed_x": [
+        "200"
+    ],
+    "machine_max_speed_y": [
+        "200"
+    ],
+    "machine_max_speed_z": [
+        "15"
+    ],
+    "machine_max_speed_e": [
+        "50"
+    ],
+    "machine_max_jerk_x": [
+        "4"
+    ],
+    "machine_max_jerk_y": [
+        "4"
+    ],
+    "machine_max_jerk_z": [
+        "0.4"
+    ],
+    "machine_max_jerk_e": [
+        "2.5"
+    ],
+    "max_layer_height": [
+        "0.3"
+    ],
+    "min_layer_height": [
+        "0.08"
+    ],
+    "thumbnails": "32x32/PNG,300x300/PNG",
+    "machine_start_gcode": "START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]\n; Add SOAK=10 for a 10 min heat soak, SMOOTH=1 for gentle motion",
+    "machine_end_gcode": "END_PRINT",
+    "change_filament_gcode": "M600",
+    "machine_pause_gcode": "PAUSE",
+    "layer_change_gcode": "",
+    "before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]",
+    "default_print_profile": "0.20mm Standard @HyperCube",
+    "default_filament_profile": [
+        "Patron PETG HS @HyperCube"
+    ],
+    "bed_exclude_area": [],
+    "extruder_offset": [
+        "0x0"
+    ],
+    "silent_mode": "0"
+}
