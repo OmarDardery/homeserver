@@ -57,6 +57,10 @@ Migration: the old AIOStreams Cloudflared container is removed when the stack st
 
 Optionally pass `-- --printer-config /path/to/config-directory` (or a single printer.cfg) at installation. Supply your verified printer configuration, including the MCU serial path, thermistor types and safety limits. Without it, Klipper intentionally has no usable hardware configuration. The installer refuses to overwrite a non-placeholder printer.cfg. Printer files and uploads are mutable under `/srv/printer_data`.
 
+The HyperCube 300 V2 configuration (SKR Mini E3 V3, M12 probe, sensorless X/Y) lives in [klipper/](klipper): `printer.cfg` and `macros.cfg`. Install it at setup with `-- --printer-config ./klipper`. On a running printer, run `sudo ./klipper-deploy.sh` from a checkout, then `sudo systemctl restart klipper`. The script keeps the printer's own SAVE_CONFIG block (z_offset, meshes, PID), backs up the current printer.cfg and refuses to run while a print is active or paused.
+
+Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune after deploying: pressure advance, bed PID (`PID_CALIBRATE HEATER=heater_bed TARGET=65`, then `SAVE_CONFIG`), and the bed screw positions for `SCREWS_TILT_CALCULATE`.
+
 ## Maintenance
 
 Re-run the installation command to refresh the managed module; the host flake pins the initial Nixpkgs revision. Update that revision deliberately in `/etc/nixos/flake.nix` before rebuilding if desired. Rebuild with `sudo nixos-rebuild switch --flake path:/etc/nixos#homeserver`. Use `sudo nixos-rebuild switch --rollback` to roll back an activated generation; printer data is not rolled back. Back up `/etc/nixos` and `/srv/printer_data` separately. Do not run during an active print.
