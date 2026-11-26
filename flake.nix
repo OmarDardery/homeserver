@@ -20,10 +20,21 @@
         } ];
       };
       packages = forAll (system:
-        let pkgs = nixpkgs.legacyPackages.${system}; in {
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          klipper-deploy = pkgs.writeShellApplication {
+            name = "homeserver-klipper-deploy";
+            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep pkgs.curl ];
+            text = ''
+              export HOMESERVER_SOURCE=${self.outPath}
+              ${builtins.readFile ./klipper-deploy.sh}
+            '';
+          };
+        in {
+          inherit klipper-deploy;
           default = pkgs.writeShellApplication {
             name = "homeserver-install";
-            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.sops pkgs.age ];
+            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.sops pkgs.age klipper-deploy ];
             text = ''
               export HOMESERVER_SOURCE=${self.outPath}
               export HOMESERVER_NIXPKGS_REV=${nixpkgs.rev}
@@ -34,6 +45,7 @@
         });
       apps = forAll (system: {
         default = { type = "app"; program = "${self.packages.${system}.default}/bin/homeserver-install"; };
+        klipper-deploy = { type = "app"; program = "${self.packages.${system}.klipper-deploy}/bin/homeserver-klipper-deploy"; };
       });
     };
 }

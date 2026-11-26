@@ -7,13 +7,14 @@ if (( EUID != 0 )); then
   echo 'Run with sudo nix run.' >&2
   exit 1
 fi
-printer_source=""
+printer_source="$HOMESERVER_SOURCE/klipper"
 age_key_source=""
 while (( $# )); do
   case "$1" in
     --printer-config) printer_source="${2:?Provide a directory or printer.cfg}"; shift 2 ;;
+    --no-printer-config) printer_source=""; shift ;;
     --age-key-file) age_key_source="${2:?Provide the backed-up age identity file}"; shift 2 ;;
-    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE] [--age-key-file FILE]'; exit 0 ;;
+    --help) echo 'Usage: homeserver-install [--printer-config DIRECTORY_OR_FILE | --no-printer-config] [--age-key-file FILE]'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -37,9 +38,6 @@ if [[ -n "$printer_source" ]]; then
     fi
   else
     echo 'Printer configuration not found.' >&2; exit 1
-  fi
-  if [[ -e /srv/printer_data/config/printer.cfg ]] && ! cmp -s /srv/printer_data/config/printer.cfg "$HOMESERVER_SOURCE/printer-placeholder.cfg"; then
-    echo 'Existing printer.cfg detected; will not overwrite it.' >&2; exit 1
   fi
 fi
 # Recover a published SOPS document without exposing the key to Nix.
@@ -109,17 +107,6 @@ else
   fi
 fi
 nix --extra-experimental-features 'nix-command flakes' build --no-link "path:$root#nixosConfigurations.homeserver.config.system.build.toplevel"
-if [[ -n "$printer_source" ]]; then
-  install -d -m 0750 /srv/printer_data/config
-  if [[ -d "$printer_source" ]]; then
-    if cmp -s /srv/printer_data/config/printer.cfg "$HOMESERVER_SOURCE/printer-placeholder.cfg"; then
-      rm /srv/printer_data/config/printer.cfg
-    fi
-    cp -rn "$printer_source/." /srv/printer_data/config/
-  else
-    install -m 0640 "$printer_source" /srv/printer_data/config/printer.cfg
-  fi
-fi
 if [[ -n "$age_key_source" || -f "$remote_cipher" ]]; then
   install -d -m 0700 "$secret_state"
   if [[ -n "$age_key_source" && ! -e "$secret_state/age.key" ]]; then
@@ -132,6 +119,15 @@ if [[ -n "$age_key_source" || -f "$remote_cipher" ]]; then
   fi
 fi
 nixos-rebuild switch --flake "path:$root#homeserver"
+if [[ -n "$printer_source" ]]; then
+  deploy_status=0
+  homeserver-klipper-deploy --source "$printer_source" --restart || deploy_status=$?
+  if (( deploy_status == 3 )); then
+    echo 'Printer busy: config not updated. Re-run after the print, or: sudo nix run github:OmarDardery/homeserver#klipper-deploy -- --restart' >&2
+  elif (( deploy_status != 0 )); then
+    exit "$deploy_status"
+  fi
+fi
 echo 'Cockpit: https://192.168.1.240:9090 | Mainsail: http://192.168.1.240'
 echo 'Printer config: /srv/printer_data/config/printer.cfg'
 echo 'AdGuard Home: http://192.168.1.240:3000 | DNS: port 53'

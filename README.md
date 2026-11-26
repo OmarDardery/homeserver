@@ -12,6 +12,8 @@ sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDarde
 
 Keep your GitHub access token in root's protected Nix configuration (`access-tokens = github.com=...`), never in this repository or a shell command. For custom host flakes, import `homeserver.nixosModules.default` instead of running the installer. The installer does not partition disks or replace your existing hardware configuration. No Cloudflare token is needed or requested during installation. All local services are installed first; the tunnel stays inactive unless previously connected.
 
+The same command also deploys the printer configuration from [klipper/](klipper) and restarts Klipper (see Printer below).
+
 Cockpit: `https://192.168.1.9:9090` or `https://192.168.1.240:9090` (existing system account); both exact origins are allowed. The server's address comes from your router's DHCP, so reserve the one you use there. If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://192.168.1.240`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
 
 ## AdGuard Home DNS
@@ -55,9 +57,15 @@ Migration: the old AIOStreams Cloudflared container is removed when the stack st
 
 ## Printer
 
-Optionally pass `-- --printer-config /path/to/config-directory` (or a single printer.cfg) at installation. Supply your verified printer configuration, including the MCU serial path, thermistor types and safety limits. Without it, Klipper intentionally has no usable hardware configuration. The installer refuses to overwrite a non-placeholder printer.cfg. Printer files and uploads are mutable under `/srv/printer_data`.
+`nix run` deploys the HyperCube 300 V2 configuration in [klipper/](klipper) (SKR Mini E3 V3, M12 probe, sensorless X/Y: `printer.cfg` and `macros.cfg`) after the system switch, then restarts Klipper. The printer's own SAVE_CONFIG block (z_offset, meshes, PID) is kept, the previous printer.cfg is backed up next to it, and nothing is changed while a print is active or paused. Pass `-- --printer-config /path/to/dir-or-printer.cfg` to deploy a different configuration, or `-- --no-printer-config` to leave the printer untouched. Printer files and uploads are mutable under `/srv/printer_data`.
 
-The HyperCube 300 V2 configuration (SKR Mini E3 V3, M12 probe, sensorless X/Y) lives in [klipper/](klipper): `printer.cfg` and `macros.cfg`. Install it at setup with `-- --printer-config ./klipper`. On a running printer, run `sudo ./klipper-deploy.sh` from a checkout, then `sudo systemctl restart klipper`. The script keeps the printer's own SAVE_CONFIG block (z_offset, meshes, PID), backs up the current printer.cfg and refuses to run while a print is active or paused.
+To update only the printer configuration:
+
+```sh
+sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDardery/homeserver#klipper-deploy -- --restart
+```
+
+From a checkout, `sudo ./klipper-deploy.sh --restart` does the same.
 
 Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune after deploying: pressure advance, bed PID (`PID_CALIBRATE HEATER=heater_bed TARGET=65`, then `SAVE_CONFIG`), and the bed screw positions for `SCREWS_TILT_CALCULATE`.
 

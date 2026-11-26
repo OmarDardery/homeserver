@@ -32,6 +32,7 @@ jobs:
           nix flake check --no-build --no-update-lock-file
       - run: nix eval --no-update-lock-file --raw .#nixosConfigurations.test.config.system.build.toplevel.drvPath
       - run: nix build --no-update-lock-file .#packages.x86_64-linux.default
+      - run: nix build --no-update-lock-file .#packages.x86_64-linux.klipper-deploy
       - name: Validate Compose structure with dummy credentials
         run: |
           sudo mkdir -p /run/homeserver-secrets
