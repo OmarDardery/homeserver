@@ -11,7 +11,7 @@ let
   };
   updater = pkgs.writeShellApplication {
     name = "homeserver-update";
-    runtimeInputs = [ helper pkgs.curl pkgs.gnugrep config.nix.package ];
+    runtimeInputs = [ helper pkgs.curl pkgs.gnugrep pkgs.jq pkgs.systemd config.nix.package ];
     text = builtins.readFile ./update.sh;
   };
   plugin = pkgs.runCommand "cockpit-homeserver-secrets" {} ''

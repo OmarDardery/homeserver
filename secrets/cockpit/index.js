@@ -304,10 +304,27 @@ async function pollUpdate() {
         : !s.InvocationID ? ["Idle", "unknown"]
         : s.Result === "success" ? ["Last update succeeded", "ok"] : ["Last update failed", "error"];
     Object.assign($("update-badge"), { textContent: label }).dataset.state = state;
+    if (updateRunning && !running) quiet(loadUpdateInfo());
     updateRunning = running;
     $("update").disabled = running || busy;
     if (running) updateTimer = setTimeout(pollUpdate, 2000);
 }
+async function loadUpdateInfo() {
+    try {
+        const s = JSON.parse(await invoke("update-status"));
+        const versions = s.deployed ? ` Deployed ${s.deployed}, GitHub ${s.latest}.` : "";
+        Object.assign($("update-info"), { textContent: s.message + versions,
+                                          className: s.state === "behind" ? "" : "muted" });
+        const list = $("update-commits");
+        list.hidden = !s.commits.length;
+        list.replaceChildren(...s.commits.map(c => el("li", {},
+            el("span", { className: "msg", textContent: c.message }),
+            el("span", { className: "muted small", textContent: " " + c.sha }))));
+    } catch (ex) {
+        $("update-info").textContent = "Update check unavailable: " + errorText(ex);
+    }
+}
+$("check-update").onclick = () => quiet(perform(loadUpdateInfo));
 $("update").onclick = () => {
     if (!confirm("Update the server from GitHub now? Services may restart. Do not use while printing."))
         return;
@@ -319,3 +336,4 @@ $("update").onclick = () => {
 
 quiet(perform(load));
 quiet(pollUpdate());
+quiet(loadUpdateInfo());

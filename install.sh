@@ -119,6 +119,9 @@ if [[ -n "$age_key_source" || -f "$remote_cipher" ]]; then
   fi
 fi
 nixos-rebuild switch --flake "path:$root#homeserver"
+# Record what is deployed so Cockpit can show pending updates.
+install -d -m 0755 /var/lib/homeserver
+printf '%s\n' "${HOMESERVER_REV:-unknown}" > /var/lib/homeserver/deployed-rev
 if [[ -n "$printer_source" ]]; then
   deploy_status=0
   homeserver-klipper-deploy --source "$printer_source" --restart || deploy_status=$?

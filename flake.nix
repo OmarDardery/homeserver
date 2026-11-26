@@ -24,7 +24,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           klipper-deploy = pkgs.writeShellApplication {
             name = "homeserver-klipper-deploy";
-            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep pkgs.curl ];
+            runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep pkgs.curl pkgs.jq pkgs.systemd ];
             text = ''
               export HOMESERVER_SOURCE=${self.outPath}
               ${builtins.readFile ./klipper-deploy.sh}
@@ -37,6 +37,7 @@
             runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.sops pkgs.age klipper-deploy ];
             text = ''
               export HOMESERVER_SOURCE=${self.outPath}
+              export HOMESERVER_REV=${self.rev or self.dirtyRev or "unknown"}
               export HOMESERVER_NIXPKGS_REV=${nixpkgs.rev}
               export HOMESERVER_SOPS_REV=${sops-nix.rev}
               ${builtins.readFile ./install.sh}

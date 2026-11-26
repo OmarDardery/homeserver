@@ -67,6 +67,10 @@ sudo nix --extra-experimental-features 'nix-command flakes' run github:OmarDarde
 
 From a checkout, `sudo ./klipper-deploy.sh --restart` does the same.
 
+Deploys keep the printer's SAVE_CONFIG block, back up replaced files to `deploy-backups/` in the config directory (five kept), and, if Klipper reports a configuration error after the restart, restore the previous files automatically. A board communication error (for example a firmware protocol mismatch after a Klipper update) is reported, not rolled back; reflash the SKR in that case.
+
+Macros: `LOAD_FILAMENT` / `UNLOAD_FILAMENT` (`TEMP=`, `BOWDEN=` tube length, default 450 mm: measure yours), `M600` filament change (pause and park), firmware retraction (`G10`/`G11`, tune live with `SET_RETRACTION`), optional heat soak (`START_PRINT ... SOAK=10`), and skew correction that loads automatically once a `default` profile is saved. Input shaper sections are ready to uncomment once an ADXL345 is wired.
+
 Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune after deploying: pressure advance, bed PID (`PID_CALIBRATE HEATER=heater_bed TARGET=65`, then `SAVE_CONFIG`), and the bed screw positions for `SCREWS_TILT_CALCULATE`.
 
 ## Maintenance
@@ -76,11 +80,12 @@ Re-run the installation command to refresh the managed module; the host flake pi
 
 ### Updating from Cockpit
 
-**Cockpit → Tools → Secrets → Server update → Update server** runs `homeserver-update.service`, which:
+**Cockpit → Tools → Secrets → Server update** shows the deployed commit, the latest commit on GitHub and the changes in between. **Update server** runs `homeserver-update.service`, which:
 
 1. refuses while a print is active or paused;
 2. publishes this server's encrypted secrets to GitHub if the file is missing there, and stops if GitHub holds different ones (use **Pull** or **Push** first);
-3. runs `nix run --refresh github:OmarDardery/homeserver`: rebuilds NixOS, deploys the printer config and restarts Klipper.
+3. runs `nix run --refresh github:OmarDardery/homeserver`: rebuilds NixOS, deploys the printer config and restarts Klipper (rolling the printer config back if Klipper rejects it);
+4. checks that Klipper, Moonraker, nginx and Cockpit are running, and fails visibly if not.
 
 The repository is private, so the update reuses the fine-grained token saved under GitHub sync for this fetch (Contents: read and write also covers the download); without it, root's `access-tokens` in nix.conf is used. The service is never restarted by the switch it triggers, and the Cockpit page resumes the log after Cockpit reconnects. **Push to GitHub** replaces the encrypted file on GitHub with this server's ciphertext; values and the age key never leave the server. The button exists after one manual install of this version.
 

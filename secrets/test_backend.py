@@ -105,6 +105,30 @@ class SecretTests(unittest.TestCase):
                     self.assertNotIn("github_pat_", str(payload))
                 self.assertEqual(b.STORE.read_bytes(), local)
 
+    def test_update_status(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            with patch.multiple(b, GITHUB_TOKEN=p/"github.token", DEPLOYED=p/"rev"):
+                self.assertEqual(b.update_status()["state"], "unknown")
+                b.GITHUB_TOKEN.write_text("github_pat_" + "a" * 40 + "\n")
+                main = {"sha": "f" * 40}
+                with patch.object(b, "github_api", return_value=main):
+                    self.assertIn("unknown", b.update_status()["message"])
+                    b.DEPLOYED.write_text("f" * 40 + "\n")
+                    self.assertEqual(b.update_status()["state"], "current")
+                b.DEPLOYED.write_text("e" * 40 + "\n")
+                compare = {"ahead_by": 2, "commits": [
+                    {"sha": "1" * 40, "commit": {"message": "First\n\nbody"}},
+                    {"sha": "2" * 40, "commit": {"message": "Second"}}]}
+                with patch.object(b, "github_api", side_effect=[main, compare]) as api:
+                    status = b.update_status()
+                    self.assertEqual(status["state"], "behind")
+                    self.assertEqual(status["message"], "2 updates available.")
+                    self.assertEqual([c["message"] for c in status["commits"]], ["Second", "First"])
+                    self.assertTrue(api.call_args.kwargs["url"].endswith("/compare/" + "e" * 40 + "..." + "f" * 40))
+                with patch.object(b, "github_api", return_value={"sha": "bad"}), self.assertRaises(b.Invalid):
+                    b.update_status()
+
     def test_import_history_and_messages(self):
         base = {"BASE_URL": "https://x", "SECRET_KEY": "a" * 64,
                 "AIOSTREAMS_AUTH": "admin:pw", "AIOSTREAMS_AUTH_REQUIRED": "true"}

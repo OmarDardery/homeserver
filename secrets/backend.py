@@ -19,6 +19,9 @@ GITHUB_TOKEN = STATE / "github.token"
 GITHUB_REPO = "https://api.github.com/repos/OmarDardery/homeserver"
 GITHUB_API = GITHUB_REPO + "/contents/secrets/runtime.enc"
 GITHUB_HISTORY = GITHUB_REPO + "/commits?path=secrets/runtime.enc&sha=main&per_page=15"
+GITHUB_MAIN = GITHUB_REPO + "/commits/main"
+DEPLOYED = Path("/var/lib/homeserver/deployed-rev")
+SHA = re.compile(r"[0-9a-f]{40}")
 RUNTIME = Path("/run/homeserver-secrets")
 DECRYPTED = Path("/run/secrets/homeserver-runtime")
 OLD_ENV = Path("/var/lib/homeserver/aiostreams/aiostreams.env")
@@ -297,6 +300,32 @@ def ensure_remote():
     return "Encrypted secrets match GitHub."
 
 
+def update_status():
+    # Compare the deployed commit (written by the installer) with GitHub main.
+    token = token_value()
+    if token is None:
+        return {"state": "unknown", "message": "Connect GitHub to check for updates.", "commits": []}
+    deployed = DEPLOYED.read_text().strip() if DEPLOYED.exists() else ""
+    latest = (github_api(token, url=GITHUB_MAIN) or {}).get("sha", "")
+    if not SHA.fullmatch(latest):
+        raise Invalid("Unexpected GitHub response for main.")
+    if not SHA.fullmatch(deployed):
+        return {"state": "unknown", "message": "Deployed version unknown; update once to record it.",
+                "latest": latest[:7], "commits": []}
+    if deployed == latest:
+        return {"state": "current", "message": "Up to date.", "deployed": deployed[:7],
+                "latest": latest[:7], "commits": []}
+    compare = github_api(token, url=f"{GITHUB_REPO}/compare/{deployed}...{latest}") or {}
+    try:
+        behind = int(compare["ahead_by"])
+        commits = [{"sha": c["sha"][:7], "message": c["commit"]["message"].splitlines()[0][:200]}
+                   for c in compare.get("commits", [])][-10:][::-1]
+    except (TypeError, KeyError, ValueError, IndexError, AttributeError):
+        raise Invalid("Unexpected GitHub compare response.") from None
+    return {"state": "behind", "message": f"{behind} update{'s' if behind != 1 else ''} available.",
+            "deployed": deployed[:7], "latest": latest[:7], "commits": commits}
+
+
 def materialize(data):
     validate(data)
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -419,6 +448,8 @@ def main():
             print(json.dumps(push_remote()))
         elif action == "github-ensure":
             print(ensure_remote())
+        elif action == "update-status":
+            print(json.dumps(update_status()))
         elif action == "list":
             print(json.dumps(describe(data)))
         elif action == "history":
