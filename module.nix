@@ -97,20 +97,20 @@ in {
     "/websocket".recommendedProxySettings = true;
   };
   networking.firewall.allowedTCPPorts = [ 80 ];
-  # Reach the server at 192.168.1.240 in addition to its DHCP address. It is added
-  # to whichever interface holds the default route, so no interface name is needed
-  # and the existing address (and SSH session) is never replaced.
-  systemd.services.homeserver-lan-address = {
-    description = "Add LAN address 192.168.1.240";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    path = [ pkgs.iproute2 pkgs.gawk ];
-    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-    script = ''
-      dev=$(ip -4 route show default | awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}')
-      if [ -z "$dev" ]; then echo "No default route; cannot add address" >&2; exit 1; fi
-      ip addr replace 192.168.1.240/24 dev "$dev"
-    '';
+  # Static LAN address for the wired interface (NetworkManager). The profile has a
+  # higher autoconnect priority than the default DHCP "Wired connection".
+  networking.networkmanager.ensureProfiles.profiles.homeserver-lan = {
+    connection = {
+      id = "homeserver-lan";
+      type = "ethernet";
+      interface-name = "enp8s0";
+      autoconnect-priority = 100;
+    };
+    ipv4 = {
+      method = "manual";
+      address1 = "192.168.1.240/24,192.168.1.1";
+      dns = "192.168.1.1;";
+    };
+    ipv6.method = "auto";
   };
 }
