@@ -97,4 +97,20 @@ in {
     "/websocket".recommendedProxySettings = true;
   };
   networking.firewall.allowedTCPPorts = [ 80 ];
+  # Static LAN address for the wired interface (NetworkManager). The profile has a
+  # higher autoconnect priority than the default DHCP "Wired connection".
+  networking.networkmanager.ensureProfiles.profiles.homeserver-lan = {
+    connection = {
+      id = "homeserver-lan";
+      type = "ethernet";
+      interface-name = "enp8s0";
+      autoconnect-priority = 100;
+    };
+    ipv4 = {
+      method = "manual";
+      address1 = "192.168.1.240/24,192.168.1.1";
+      dns = "192.168.1.1;";
+    };
+    ipv6.method = "auto";
+  };
 }
