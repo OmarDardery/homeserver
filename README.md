@@ -14,7 +14,7 @@ Keep your GitHub access token in root's protected Nix configuration (`access-tok
 
 The same command also deploys the printer configuration from [klipper/](klipper) and restarts Klipper (see Printer below).
 
-Cockpit: `https://192.168.1.9:9090` or `https://192.168.1.240:9090` (existing system account); both exact origins are allowed. The server's address comes from your router's DHCP, so reserve the one you use there. If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://192.168.1.240`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
+Cockpit: `https://192.168.1.9:9090` or `https://192.168.1.240:9090` (existing system account); both exact origins are allowed. The server keeps its DHCP address and also gets 192.168.1.240 on its default-route interface via `homeserver-lan-address.service` (keep 192.168.1.240 outside your router's DHCP pool to avoid a conflict). If the address changes, add the exact HTTPS origin including port 9090 to `services.cockpit.allowed-origins` in the host configuration and rebuild. Do not allow wildcard origins. Mainsail: `http://192.168.1.240`. Moonraker is proxied by nginx on port 80; its backend listens on loopback. Keep these services on a trusted LAN, not directly on the public internet.
 
 ## AdGuard Home DNS
 
