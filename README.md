@@ -71,11 +71,26 @@ Deploys keep the printer's SAVE_CONFIG block, back up replaced files to `deploy-
 
 The purge primes the nozzle, draws two solid 0.8 mm × 0.4 mm lines just in front of the printed objects (inside the adaptive mesh; front edge if objects are not labelled) and wipes without retracting, so the first layer starts with a full nozzle. Macros: `LOAD_FILAMENT` / `UNLOAD_FILAMENT` (`TEMP=`, `BOWDEN=` tube length, default 450 mm: measure yours), `M600` filament change (pause and park), firmware retraction (`G10`/`G11`, tune live with `SET_RETRACTION`), optional heat soak (`START_PRINT ... SOAK=10`), and skew correction that loads automatically once a `default` profile is saved. Input shaper sections are ready to uncomment once an ADXL345 is wired. To stop the frame shaking, motion limits are gentler (acceleration 1500, corner speed 4); `SMOOTH_MODE` lowers them further at runtime (also `START_PRINT ... SMOOTH=1`), `NORMAL_MODE` restores them.
 
-Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune after deploying: pressure advance, bed PID (`PID_CALIBRATE HEATER=heater_bed TARGET=65`, then `SAVE_CONFIG`), and the bed screw positions for `SCREWS_TILT_CALCULATE`.
+Set the OrcaSlicer start G-code to `START_PRINT BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]` and the end G-code to `END_PRINT`, and enable "Exclude objects" so START_PRINT probes an adaptive mesh over the printed area only. Still to tune: input shaper (needs an ADXL345) and the bed screw positions for `SCREWS_TILT_CALCULATE`.
+
+### Calibration (28 Nov 2026, Patron PETG)
+
+| Setting | Value | Where | How |
+|---|---|---|---|
+| Hotend and bed PID | in the printer's SAVE_CONFIG block | Klipper | `PID_CALIBRATE`, part fan off |
+| Heater check | 1 °C rise per 60 s | `[verify_heater extruder]` | Volcano block heats slowly |
+| Extruder `rotation_distance` | 22.956522 | `printer.cfg` | 99 mm out of 100 mm requested |
+| Flow ratio | 1.03 | filament profile | OrcaSlicer flow test (YOLO) |
+| Nozzle temperature | 225 °C (230 °C first layer) | filament profile | temperature tower |
+| Retraction | 3.5 mm at 40 mm/s | printer profile and `[firmware_retraction]` | OrcaSlicer retraction test |
+| Pressure advance | 0.65 | `printer.cfg` | OrcaSlicer PA pattern (keep it off in the filament profile) |
+| Part cooling | 40–80 %, 100 % on overhangs and bridges | filament profile | set after the first benchy |
+
+Re-run the flow, temperature and retraction tests for a new filament.
 
 ## OrcaSlicer profile
 
-[orca/](orca) holds the HyperCube profiles: printer `HyperCube 300 V2 0.4 Volcano` (Klipper flavour, 300 × 300 × 300, START_PRINT/END_PRINT/M600 wired up, object labels on, Bowden retraction 4 mm), process `0.20mm Standard @HyperCube` and filament `Patron PETG HS @HyperCube` (245/240 °C, bed 70/65 °C). In OrcaSlicer use **File → Import → Import Configs…** and select the three JSON files. If import is refused, copy them into `~/.config/OrcaSlicer/user/default/machine`, `process` and `filament` respectively and restart OrcaSlicer.
+[orca/](orca) holds the HyperCube profiles: printer `HyperCube 300 V2 0.4 Volcano` (Klipper flavour, 300 × 300 × 300, START_PRINT/END_PRINT/M600 wired up, object labels on, Bowden retraction 3.5 mm), process `0.20mm Standard @HyperCube` and filament `Patron PETG HS @HyperCube` (230/225 °C, flow 1.03, bed 70/65 °C). In OrcaSlicer use **File → Import → Import Configs…** and select the three JSON files. If import is refused, copy them into `~/.config/OrcaSlicer/user/default/machine`, `process` and `filament` respectively and restart OrcaSlicer.
 
 They were tested by slicing with OrcaSlicer 2.5.2 and running the resulting G-code through Klipper in batch mode against this configuration. Smooth mode is a ceiling: OrcaSlicer's per-feature acceleration commands are clamped to it while `SMOOTH_MODE` is active.
 

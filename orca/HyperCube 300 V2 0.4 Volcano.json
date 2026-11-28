@@ -22,7 +22,7 @@
     "use_relative_e_distances": "1",
     "use_firmware_retraction": "0",
     "retraction_length": [
-        "4"
+        "3.5"
     ],
     "retraction_speed": [
         "40"
