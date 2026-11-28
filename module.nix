@@ -36,6 +36,7 @@ in {
       "https://cockpit.dardery.work"
       "https://192.168.1.9:9090"
       "https://192.168.1.240:9090"
+      "https://cockpit.home.arpa:9090"
     ];
     settings.WebService.LoginTo = false;
   };
@@ -97,6 +98,20 @@ in {
     "/websocket".recommendedProxySettings = true;
   };
   networking.firewall.allowedTCPPorts = [ 80 ];
+  # Private LAN names (resolved by an AdGuard wildcard rewrite *.home.arpa -> this
+  # server). Mainsail is the default vhost, so printer.home.arpa only needs an alias.
+  services.nginx.virtualHosts = {
+    mainsail.serverAliases = [ "printer.home.arpa" ];
+    "aio.home.arpa".locations."/" = {
+      proxyPass = "http://127.0.0.1:8080";
+      proxyWebsockets = true;
+      recommendedProxySettings = true;
+    };
+    "adguard.home.arpa".locations."/" = {
+      proxyPass = "http://127.0.0.1:3000";
+      recommendedProxySettings = true;
+    };
+  };
   # Static LAN address for the wired interface (NetworkManager). The profile has a
   # higher autoconnect priority than the default DHCP "Wired connection".
   networking.networkmanager.ensureProfiles.profiles.homeserver-lan = {
