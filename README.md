@@ -20,6 +20,19 @@ Cockpit: `https://192.168.1.9:9090` or `https://192.168.1.240:9090` (existing sy
 
 Visit `http://192.168.1.240:3000` and complete the initial setup wizard. Keep the admin interface on port 3000 (port 80 is reserved for Mainsail). Select the server's stable LAN IP for the DNS listener on port 53 to avoid conflicting with a local DNS stub resolver; choose an admin password and upstream resolvers. Then configure the router DHCP DNS option to advertise the server's LAN IP. Do not forward DNS or admin ports from the internet. The existing host DNS configuration is not modified. Settings persist in the AdGuard service's state directory.
 
+## Private names (home.arpa)
+
+After the AdGuard wizard, open **Filters → DNS rewrites → Add DNS rewrite** and add one wildcard entry: domain `*.home.arpa`, answer `192.168.1.240`. Devices using AdGuard as their DNS (see above) then resolve:
+
+| Name | App |
+|---|---|
+| `http://printer.home.arpa` | Mainsail (nginx default site) |
+| `http://aio.home.arpa` | AIOStreams (nginx proxy to loopback 8080) |
+| `http://adguard.home.arpa` | AdGuard Home admin (nginx proxy to 3000) |
+| `https://cockpit.home.arpa:9090` | Cockpit (its own self-signed HTTPS; the exact origin is allowed) |
+
+These are LAN-only names. AIOStreams still advertises its canonical `https://aio.dardery.work` URL in addon manifests, so install addons from that address. Cockpit is not proxied because it needs HTTPS end to end. The rewrite lives in AdGuard's own settings, which the wizard owns, so it is not declared in Nix.
+
 ## AIOStreams (Podman)
 
 The [Compose file](compose.yaml) manages only AIOStreams. Persistent data uses the existing named volume and the host port 8080 is loopback-only.
